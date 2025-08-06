@@ -1,0 +1,130 @@
+body {
+  background: #313338;
+  color: #fff;
+  font-family: 'gg sans', 'Segoe UI', Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+.discord-container {
+  max-width: 400px;
+  margin: 40px auto;
+  background: #232428;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px #0008;
+  padding: 32px 24px;
+}
+h1 {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 24px;
+  font-size: 1.7em;
+  letter-spacing: 1px;
+}
+form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+input[type="text"] {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  background: #383a40;
+  color: #fff;
+  font-size: 1em;
+}
+button {
+  background: #5865f2;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+button:hover {
+  background: #4752c4;
+}
+.user-card {
+  background: #232428;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 8px #0005;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: box-shadow 0.2s;
+}
+.user-card .banner {
+  width: 100%;
+  height: 80px;
+  border-radius: 8px 8px 0 0;
+  background: #5865f2;
+  background-size: cover;
+  background-position: center;
+  margin-bottom: -40px;
+}
+.user-card .avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid #232428;
+  background: #232428;
+  margin-bottom: 8px;
+  z-index: 1;
+}
+.user-card .username {
+  font-size: 1.3em;
+  font-weight: bold;
+  color: #fff;
+}
+.user-card .bio {
+  color: #b5bac1;
+  font-size: 1em;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.user-card .badges {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.user-card .badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #5865f2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1em;
+  color: #fff;
+  font-weight: bold;
+}
+.user-card .created {
+  color: #b5bac1;
+  font-size: 0.95em;
+}
+.hidden {
+  display: none;
+}
+.error {
+  color: #f04747;
+  text-align: center;
+  margin-top: 10px;
+}
+.user-card .bio a {
+  color: #00A8FC;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+.user-card .bio a:hover {
+  text-decoration: underline;
+  color: #1da8fc;
+}
+.user-card .bio a:visited {
+  color: #005a8c;
+}
