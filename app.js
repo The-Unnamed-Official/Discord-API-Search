@@ -7,14 +7,16 @@ const errorDiv = document.getElementById("error");
 document.getElementById("activityTab").classList.add("hidden");
 document.getElementById("activityTab").innerHTML = "";
 
-// Mock badge icons (replace with SVGs or images for real use)
+// Badge icons using Discord's official badge SVGs
 const BADGE_ICONS = {
-  staff: "⭐",
-  partner: "🤝",
-  hypesquad: "🎉",
-  nitro: "🐛",
-  verified_bot: "🤖",
-  early_supporter: "⏰",
+  nitro:    '<img src="https://cdn.discordapp.com/badge-icons/0334688279c8359120922938dcb1d6f8.png" alt="Nitro" title="Nitro" class="badge-icon">',
+  booster:  '<img src="https://cdn.discordapp.com/badge-icons/7142225d31238f6387d9f09efaa02759.png" alt="Booster" title="Booster" class="badge-icon">',
+  booster2:  '<img src="https://cdn.discordapp.com/badge-icons/51040c70d4f20a921ad6674ff86fc95c.png" alt="Booster2" title="Booster2" class="badge-icon">',
+  hypesquad: '<img src="https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png" alt="HypeSquad Events" title="HypeSquad Events" class="badge-icon">',
+  og_badge: '<img src="https://cdn.discordapp.com/badge-icons/6de6d34650760ba5551a79732e98ed60.png" alt="OG Badge" title="OG Badge" class="badge-icon">',
+  quest: '<img src="https://cdn.discordapp.com/badge-icons/7d9ae358c8c5e118768335dbe68b4fb8.png" alt="Quest" title="Quest" class="badge-icon">',
+  orb:   '<img src="https://cdn.discordapp.com/badge-icons/83d8a1eb09a8d64e59233eec5d4d5c2d.png" alt="Orb" title="Orb" class="badge-icon">',
+  active_dev: '<img src="https://discord.com/assets/4c2c6b6c3c7c6b6c3c7c.svg" alt="Active Developer" title="Active Developer" class="badge-icon">'
 };
 
 // Mock user data for demo
@@ -39,7 +41,7 @@ const MOCK_USERS = {
     banner:
       "https://cdn.discordapp.com/banners/611204110955446301/58f215ca99acd3b6b8bce25cc1515e1c.png?size=480",
     banner_color: "#e38e2b",
-    badges: ["hypesquad", "partner", "early_supporter", "bug_hunter", "nitro"],
+    badges: ["nitro", "booster", "hypesquad", "og_badge", "quest", "orb"],
     created_at: "2019-08-15T10:00:00.000Z",
   },
   "1248988886605103222": {
@@ -77,7 +79,7 @@ const MOCK_USERS = {
     banner:
       "https://cdn.discordapp.com/banners/478866862537441291/1fef8bce29a2356850f041909839e280.png?size=480",
     banner_color: "#232428",
-    badges: ["staff", "partner", "hypesquad", "nitro"],
+    badges: ["nitro", "booster2", "og_badge", "quest", "orb"],
     created_at: "2018-08-14T10:00:00.000Z",
   },
   "847388436263337984": {
@@ -88,9 +90,31 @@ const MOCK_USERS = {
     status: "🔥Sol’s RNG IS BACK BABY!!!!",
     banner: "",
     banner_color: "#000000ff",
-    badges: [],
+    badges: ["og_badge"],
     created_at: "2021-05-27T10:00:00.000Z",
   },
+  "424944737305493505": {
+    username: ".thetacodude",
+    avatar: "https://cdn.discordapp.com/avatars/424944737305493505/22e8fd40599671503e8babb49751920c.webp?size=128",
+    bio: '',
+    status: '',
+    banner: '',
+    banner_color: '#1388c0',
+    badges: [],
+    created_at: '2018-03-18T10:00:00.000Z',
+  },
+  "527850063360163840": {
+    username: "fastfifo",
+    avatar: "https://cdn.discordapp.com/avatars/527850063360163840/09a09323a1145b74b45afd042c7c8b75.webp?size=160",
+    avatar_deco: "https://cdn.discordapp.com/avatar-decoration-presets/a_1b2c3d4e5f6g7h8i9j.png?size=160&passthrough=false",
+    avatar_deco_gif: "https://cdn.discordapp.com/avatar-decoration-presets/a_1b2c3d4e5f6g7h8i9j.png?size=160&passthrough=true",
+    bio: "",
+    status: "",
+    banner: "",
+    banner_color: "#000000",
+    badges: [],
+    created_at: "2020-01-01T00:00:00.000Z",
+  }
 };
 
 // Aliases for the same user
@@ -101,6 +125,8 @@ MOCK_USERS["not.unnamed"] = MOCK_USERS["611204110955446301"];
 MOCK_USERS["blodhest"] = MOCK_USERS["478866862537441291"];
 
 MOCK_USERS["unknown_00069"] = MOCK_USERS["847388436263337984"];
+
+MOCK_USERS[".thetacodude"] = MOCK_USERS["424944737305493505"];
 
 function formatDate(iso) {
   const date = new Date(iso);
@@ -135,7 +161,7 @@ MOCK_USERS["1248988886605103222"].activities = [
     logo: "https://static.wikia.nocookie.net/logopedia/images/6/6f/Roblox_app_2022.svg/revision/latest?cb=20230413000311",
     icon: "🎮",
     title: "Roblox",
-    meta: "1d ago • 6x Streak",
+    meta: "Now • 7x Streak",
   },
   {
     logo: "https://static.wikia.nocookie.net/logopedia/images/4/41/Geometry_Dash_Icon.svg/revision/latest?cb=20220220121501",
@@ -194,6 +220,56 @@ MOCK_USERS["478866862537441291"].activities = [
     title: "PEAK",
     meta: "2w ago • New Player • 3h Marathon",
   },
+];
+MOCK_USERS["424944737305493505"].activities = [
+  {
+    logo: "https://static.wikia.nocookie.net/logopedia/images/4/41/Geometry_Dash_Icon.svg/revision/latest?cb=20220220121501",
+    icon: "🟨",
+    title: "Geometry Dash",
+    meta: "30m ago • 7x Streak",
+  },
+  {
+    logo: "https://static.wikia.nocookie.net/logopedia/images/6/6f/Roblox_app_2022.svg/revision/latest?cb=20230413000311",
+    icon: "🎮",
+    title: "Roblox",
+    meta: "2d ago • 11x Streak",
+  },
+  {
+    logo: "https://static.wikia.nocookie.net/logopedia/images/3/3c/Minecraft_icon_2021.svg/revision/latest?cb=20230427140314",
+    icon: "🔫",
+    title: "Minecraft",
+    meta: "2d ago • Returning after 2 months",
+  },
+  {
+    logo: "https://cdn.discordapp.com/app-icons/1398137737814478888/895d7cde9e9706083690e33a0fc1513c.png?size=160&keep_aspect_ratio=false",
+    icon: "🪄",
+    title: "Mage Arena",
+    meta: "",
+  },
+  {
+    logo: "https://cdn.discordapp.com/app-icons/389968138688659466/f61d2ad31d598449d3cb9aaaa4035f2c.png?size=160&keep_aspect_ratio=false",
+    icon: "🔨",
+    title: "Getting Over It with Bennett Foddy",
+    meta: "5d ago • Returning after 8 months",
+  },
+  {
+    logo: "https://cdn.discordapp.com/app-icons/389968138688659466/f61d2ad31d598449d3cb9aaaa4035f2c.png?size=160&keep_aspect_ratio=false",
+    icon: "😂",
+    title: "R.E.P.O",
+    meta: "5d ago • Returning after 3 months",
+  },
+  {
+    logo: "https://cdn.discordapp.com/app-icons/946609449680908348/0a0c0a0be069dddfc3f1fbede4e34bfd.png?size=160&keep_aspect_ratio=false",
+    icon: "⚔️",
+    title: "ELDEN RING",
+    meta: "2w ago",
+  },
+  {
+    logo: "https://cdn.discordapp.com/app-icons/356876176465199104/4628d9240d9f3fb68f98d55352fef553.png?size=160&keep_aspect_ratio=false",
+    icon: "🚗",
+    title: "Grand Theft Auto V",
+    meta: "3w ago • Returning after 4 month",
+  }
 ];
 
 // Render activity tab

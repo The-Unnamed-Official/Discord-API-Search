@@ -173,17 +173,23 @@ button:hover {
   gap: 6px;
   margin-bottom: 8px;
 }
+.badge-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
 .user-card .badge {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  background: #5865f2;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0 1px;
+  border-radius: 4px;
+  background: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.1em;
-  color: #fff;
-  font-weight: bold;
 }
 .user-card .created {
   color: #b5bac1;
