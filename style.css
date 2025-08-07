@@ -1,17 +1,26 @@
 body {
   background: #313338;
   color: #fff;
-  font-family: 'gg sans', 'Segoe UI', Arial, sans-serif;
+  font-family: "gg sans", "Segoe UI", Arial, sans-serif;
   margin: 0;
   padding: 0;
 }
+.discord-main {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  background: #313338;
+}
 .discord-container {
   max-width: 400px;
-  margin: 40px auto;
+  min-width: 340px;
+  margin: 40px 0 40px 40px;
   background: #232428;
   border-radius: 12px;
   box-shadow: 0 2px 16px #0008;
   padding: 32px 24px;
+  flex-shrink: 0;
 }
 h1 {
   text-align: center;
@@ -67,14 +76,86 @@ button:hover {
   background-position: center;
   margin-bottom: -40px;
 }
-.user-card .avatar {
+.avatar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 80px;
+  margin-bottom: 8px;
+  gap: 12px;
+  flex-direction: row;
+  justify-content: flex-start;
+}
+.avatar-deco {
+  position: absolute;
+  left: -2px;
+  top: 0;
+  width: 96px;
+  height: 96px;
+  z-index: 4;
+}
+.avatar {
   width: 80px;
   height: 80px;
   border-radius: 50%;
   border: 4px solid #232428;
   background: #232428;
-  margin-bottom: 8px;
-  z-index: 1;
+  z-index: 3;
+  flex-shrink: 0;
+  position: relative;
+}
+.status-bubble {
+  position: absolute;
+  left: 90px;
+  top: 16px;
+  background: #232428;
+  color: #fff;
+  border-radius: 18px 18px 18px 0;
+  padding: 6px 14px 6px 12px;
+  font-size: 0.98em;
+  box-shadow: 0 2px 8px #0005;
+  border: 2px solid #232428;
+  min-width: 32px;
+  max-width: 150px;
+  max-height: 28px;
+  display: flex;
+  align-items: center;
+  z-index: 2;
+  cursor: pointer;
+  transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    max-height 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    padding-bottom 0.25s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
+  overflow: hidden;
+}
+.status-bubble span {
+  display: block;
+  max-width: 120px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 1;
+  transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    white-space 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s 0.07s;
+}
+.status-bubble.expanded {
+  max-width: 320px;
+  min-width: 180px;
+  max-height: 200px;
+  white-space: normal;
+  align-items: flex-start;
+  padding-bottom: 12px;
+  background: #232428;
+}
+.status-bubble.expanded span {
+  max-width: 300px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  opacity: 1;
+  transition: max-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    white-space 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s;
 }
 .user-card .username {
   font-size: 1.3em;
@@ -117,7 +198,7 @@ button:hover {
   margin-top: 10px;
 }
 .user-card .bio a {
-  color: #00A8FC;
+  color: #00a8fc;
   text-decoration: none;
   transition: color 0.2s;
 }
@@ -127,4 +208,81 @@ button:hover {
 }
 .user-card .bio a:visited {
   color: #005a8c;
+}
+.activity-tab {
+  background: #232428;
+  border-radius: 12px;
+  box-shadow: 0 2px 16px #0008;
+  margin: 40px 40px 40px 24px;
+  padding: 24px 24px 24px 24px;
+  min-width: 340px;
+  max-width: 400px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.activity-tab h2 {
+  color: #fff;
+  font-size: 1.2em;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.activity-item {
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0);
+}
+.activity-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  background: #23242800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2em;
+}
+.activity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.activity-title {
+  color: #fff;
+  font-weight: bold;
+  font-size: 1.08em;
+  line-height: 1.1;
+}
+.activity-desc {
+  color: #b5bac1;
+  font-size: 0.98em;
+  font-weight: 500;
+  margin-top: 1px;
+  margin-bottom: 1px;
+  line-height: 1.1;
+}
+.activity-meta {
+  color: #b5bac1;
+  font-size: 0.95em;
+}
+@media (max-width: 900px) {
+  .discord-main {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .activity-tab {
+    margin: 0 40px 40px 40px;
+  }
+}
+.hidden {
+  display: none !important;
 }

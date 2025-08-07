@@ -1,20 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Discord User Search</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <div class="discord-container">
-    <h1>Discord User Search</h1>
-    <form id="searchForm">
-      <input type="text" id="userId" placeholder="Enter Discord User ID" required>
-      <button type="submit">Search</button>
-    </form>
-    <div id="userCard" class="user-card hidden"></div>
-    <div id="error" class="error"></div>
-  </div>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Discord User Search</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="discord-main">
+      <div class="discord-container">
+        <h1>Discord User Search</h1>
+        <form id="searchForm">
+          <input
+            type="text"
+            id="userId"
+            placeholder="Enter Discord User ID"
+            required
+          />
+          <button type="submit">Search</button>
+        </form>
+        <div id="userCard" class="user-card hidden"></div>
+        <div id="error" class="error"></div>
+      </div>
+      <div id="activityTab" class="activity-tab hidden"></div>
+    </div>
+    <script src="app.js"></script>
+  </body>
 </html>
