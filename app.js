@@ -9,20 +9,86 @@ document.getElementById("activityTab").innerHTML = "";
 
 // Badge icons using Discord's official badge SVGs
 const BADGE_ICONS = {
-  nitro:    '<img src="https://cdn.discordapp.com/badge-icons/0334688279c8359120922938dcb1d6f8.png" alt="Nitro" title="Nitro" class="badge-icon">',
-  nitro2:    '<img src="https://cdn.discordapp.com/badge-icons/11e2d339068b55d3a506cff34d3780f3.png" alt="Nitro2" title="Nitro2" class="badge-icon">',
-  booster:  '<img src="https://cdn.discordapp.com/badge-icons/7142225d31238f6387d9f09efaa02759.png" alt="Booster" title="Booster" class="badge-icon">',
-  booster2:  '<img src="https://cdn.discordapp.com/badge-icons/51040c70d4f20a921ad6674ff86fc95c.png" alt="Booster2" title="Booster2" class="badge-icon">',
-  booster3:  '<img src="https://cdn.discordapp.com/badge-icons/ec92202290b48d0879b7413d2dde3bab.png" alt="Booster3" title="Booster3" class="badge-icon">',
-  hypesquad: '<img src="https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png" alt="HypeSquad Events" title="HypeSquad Events" class="badge-icon">',
-  og_badge: '<img src="https://cdn.discordapp.com/badge-icons/6de6d34650760ba5551a79732e98ed60.png" alt="OG Badge" title="OG Badge" class="badge-icon">',
-  quest: '<img src="https://cdn.discordapp.com/badge-icons/7d9ae358c8c5e118768335dbe68b4fb8.png" alt="Quest" title="Quest" class="badge-icon">',
-  orb:   '<img src="https://cdn.discordapp.com/badge-icons/83d8a1eb09a8d64e59233eec5d4d5c2d.png" alt="Orb" title="Orb" class="badge-icon">',
-  active_dev: '<img src="https://discord.com/assets/4c2c6b6c3c7c6b6c3c7c.svg" alt="Active Developer" title="Active Developer" class="badge-icon">'
+  nitro:
+    '<img src="https://cdn.discordapp.com/badge-icons/2ba85e8026a8614b640c2837bcdfe21b.png" alt="Nitro" title="Nitro" class="badge-icon">',
+  nitro_bronze:
+    '<img src="https://cdn.discordapp.com/badge-icons/4f33c4a9c64ce221936bd256c356f91f.png" alt="Nitro Bronze" title="Nitro Bronze" class="badge-icon">',
+  nitro_silver:
+    '<img src="https://cdn.discordapp.com/badge-icons/4514fab914bdbfb4ad2fa23df76121a6.png" alt="Nitro Silver" title="Nitro Silver" class="badge-icon">',
+  nitro_gold:
+    '<img src="https://cdn.discordapp.com/badge-icons/2895086c18d5531d499862e41d1155a6.png" alt="Nitro Gold" title="Nitro Gold" class="badge-icon">',
+  nitro_platinum:
+    '<img src="https://cdn.discordapp.com/badge-icons/0334688279c8359120922938dcb1d6f8.png" alt="Nitro Platinum" title="Nitro Platinum" class="badge-icon">',
+  nitro_diamond:
+    '<img src="https://cdn.discordapp.com/badge-icons/0d61871f72bb9a33a7ae568c1fb4f20a.png" alt="Nitro Diamond" title="Nitro Diamond" class="badge-icon">',
+  nitro_emerald:
+    '<img src="https://cdn.discordapp.com/badge-icons/11e2d339068b55d3a506cff34d3780f3.png" alt="Nitro Emerald" title="Nitro Emerald" class="badge-icon">',
+  nitro_ruby:
+    '<img src="https://cdn.discordapp.com/badge-icons/cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4.png" alt="Nitro Ruby" title="Nitro Ruby" class="badge-icon">',
+  nitro_opal:
+    '<img src="https://cdn.discordapp.com/badge-icons/5b154df19c53dce2af92c9b61e6be5e2.png" alt="Nitro Opal" title="Nitro Opal" class="badge-icon">',
+  booster_hex:
+    '<img src="https://cdn.discordapp.com/badge-icons/df199d2050d3ed4ebf84d64ae83989f8.png" alt="Booster Hex" title="Booster Hex" class="badge-icon">',
+  booster_hex_spark:
+    '<img src="https://cdn.discordapp.com/badge-icons/7142225d31238f6387d9f09efaa02759.png" alt="Booster Hex Spark" title="Booster Hex Spark" class="badge-icon">',
+  booster_gem:
+    '<img src="https://cdn.discordapp.com/badge-icons/72bed924410c304dbe3d00a6e593ff59.png" alt="Booster Gem" title="Booster Gem" class="badge-icon">',
+  booster_gem_spark:
+    '<img src="https://cdn.discordapp.com/badge-icons/cb3ae83c15e970e8f3d410bc62cb8b99.png" alt="Booster Gem Spark" title="Booster Gem Spark" class="badge-icon">',
+  booster_gem_squ:
+    '<img src="https://cdn.discordapp.com/badge-icons/0e4080d1d333bc7ad29ef6528b6f2fb7.png" alt="Booster Gem Squ" title="Booster Gem Squ" class="badge-icon">',
+  booster_squ:
+    '<img src="https://cdn.discordapp.com/badge-icons/996b3e870e8a22ce519b3a50e6bdd52f.png" alt="Booster Squ" title="Booster Squ" class="badge-icon">',
+  booster_tri:
+    '<img src="https://cdn.discordapp.com/badge-icons/51040c70d4f20a921ad6674ff86fc95c.png" alt="Booster Tri" title="Booster Tri" class="badge-icon">',
+  booster_dia_spark:
+    '<img src="https://cdn.discordapp.com/badge-icons/ec92202290b48d0879b7413d2dde3bab.png" alt="Booster Dia Spark" title="Booster Dia Spark" class="badge-icon">',
+  booster_star_spark:
+    '<img src="https://cdn.discordapp.com/badge-icons/991c9f39ee33d7537d9f408c3e53141e.png" alt="Booster Star Spark" title="Booster Star Spark" class="badge-icon">',
+  hypesquad_brilliance:
+    '<img src="https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png" alt="HypeSquad Events Brilliance" title="HypeSquad Events Brilliance" class="badge-icon">',
+  hypesquad_balance:
+    '<img src="https://cdn.discordapp.com/badge-icons/3aa41de486fa12454c3761e8e223442e.png" alt="HypeSquad Events Balance" title="HypeSquad Events Balance" class="badge-icon">',
+  hypesquad_bravery:
+    '<img src="https://cdn.discordapp.com/badge-icons/8a88d63823d8a71cd5e390baa45efa02.png" alt="HypeSquad Events Bravery" title="HypeSquad Events Bravery" class="badge-icon">',
+  og_badge:
+    '<img src="https://cdn.discordapp.com/badge-icons/6de6d34650760ba5551a79732e98ed60.png" alt="OG Badge" title="OG Badge" class="badge-icon">',
+  quest:
+    '<img src="https://cdn.discordapp.com/badge-icons/7d9ae358c8c5e118768335dbe68b4fb8.png" alt="Quest" title="Quest" class="badge-icon">',
+  orb: '<img src="https://cdn.discordapp.com/badge-icons/83d8a1eb09a8d64e59233eec5d4d5c2d.png" alt="Orb" title="Orb" class="badge-icon">',
+  active_dev:
+    '<img src="https://cdn.discordapp.com/badge-icons/6bdc42827a38498929a4920da12695d9.png" alt="Active Developer" title="Active Developer" class="badge-icon">',
+  staff:
+    '<img src="https://cdn.discordapp.com/badge-icons/5e74e9b61934fc1f67c65515d1f7e60d.png" alt="Staff" title="Staff" class="badge-icon">',
+  part_server_owner:
+    '<img src="https://cdn.discordapp.com/badge-icons/3f9748e53446a137a052f3454e2de41e.png" alt="Part Server Owner" title="Part Server Owner" class="badge-icon">',
+  early_supporter:
+    '<img src="https://cdn.discordapp.com/badge-icons/7060786766c9c840eb3019e725d2b358.png" alt="Early Supporter" title="Early Supporter" class="badge-icon">',
+  early_bot_dev:
+    '<img src="https://cdn.discordapp.com/badge-icons/6df5892e0f35b051f8b61eace34f4967.png" alt="Early Bot Developer" title="Early Bot Developer" class="badge-icon">',
 };
 
 // Mock user data for demo
 const MOCK_USERS = {
+  0: {
+    username: "Discord",
+    avatar:
+      "https://static.wikia.nocookie.net/discord/images/4/41/Moscandow.png/revision/latest/scale-to-width-down/250?cb=20241022183116",
+    bio: `
+      <b>Discord</b> is a communication platform for gamers and communities.<br>
+      <ul>
+        <li>Voice, video, and text chat functionality</li>
+        <li>Available on Windows, macOS, iOS, Android, and web browsers</li>
+        <li>Create and join servers, participate in discussions, and share content</li>
+      </ul>
+      <a href="https://discord.com/" target="_blank">discord.com</a>
+    `,
+    status: "Online",
+    banner: "https://cdn.prod.website-files.com/5f9072399b2640f14d6a2bf4/64c0216095f32666554818d5_Blog%402x.png",
+    banner_color: "#7289da",
+    badges: ["nitro_opal", "booster_dia_spark", "hypesquad_bravery", "hypesquad_brilliance", "hypesquad_balance", "active_dev", "staff", "part_server_owner", "early_supporter", "early_bot_dev", "og_badge", "quest", "orb"],
+    created_at: "2015-05-13T00:00:00.000Z",
+  },
   "611204110955446301": {
     username: "not.unnamed",
     avatar:
@@ -43,7 +109,14 @@ const MOCK_USERS = {
     banner:
       "https://cdn.discordapp.com/banners/611204110955446301/58f215ca99acd3b6b8bce25cc1515e1c.png?size=480",
     banner_color: "#e38e2b",
-    badges: ["nitro", "booster", "hypesquad", "og_badge", "quest", "orb"],
+    badges: [
+      "nitro_platinum",
+      "hypesquad_brilliance",
+      "booster_gem_spark",
+      "og_badge",
+      "quest",
+      "orb",
+    ],
     created_at: "2019-08-15T10:00:00.000Z",
   },
   "1248988886605103222": {
@@ -81,7 +154,7 @@ const MOCK_USERS = {
     banner:
       "https://cdn.discordapp.com/banners/478866862537441291/1fef8bce29a2356850f041909839e280.png?size=480",
     banner_color: "#232428",
-    badges: ["nitro", "booster2", "og_badge", "quest", "orb"],
+    badges: ["nitro_platinum", "booster_tri", "og_badge", "quest", "orb"],
     created_at: "2018-08-14T10:00:00.000Z",
   },
   "847388436263337984": {
@@ -97,19 +170,23 @@ const MOCK_USERS = {
   },
   "424944737305493505": {
     username: ".thetacodude",
-    avatar: "https://cdn.discordapp.com/avatars/424944737305493505/22e8fd40599671503e8babb49751920c.webp?size=128",
-    bio: '',
-    status: '',
-    banner: '',
-    banner_color: '#1388c0',
-    badges: [],
-    created_at: '2018-03-18T10:00:00.000Z',
+    avatar:
+      "https://cdn.discordapp.com/avatars/424944737305493505/22e8fd40599671503e8babb49751920c.webp?size=128",
+    bio: "",
+    status: "",
+    banner: "",
+    banner_color: "#1388c0",
+    badges: ["og_badge", "quest"],
+    created_at: "2018-03-18T10:00:00.000Z",
   },
   "527850063360163840": {
     username: "fastfifo",
-    avatar: "https://cdn.discordapp.com/avatars/527850063360163840/09a09323a1145b74b45afd042c7c8b75.webp?size=160",
-    avatar_deco: "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=false",
-    avatar_deco_gif: "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=true",
+    avatar:
+      "https://cdn.discordapp.com/avatars/527850063360163840/09a09323a1145b74b45afd042c7c8b75.webp?size=160",
+    avatar_deco:
+      "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=false",
+    avatar_deco_gif:
+      "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=true",
     bio: `
       Taken by my gorgeous fiancé<br>
       <span style="color:#ff0000;"><img src="https://cdn.pixabay.com/photo/2021/05/22/11/38/yt-6273367_640.png" alt="YouTube" style="width:1.5em;height:1em;vertical-align:middle;"></span> 18K<br>
@@ -124,25 +201,51 @@ const MOCK_USERS = {
       </blockquote>
     `,
     status: "Sesto Elemento my beloved!",
-    banner: "https://cdn.discordapp.com/banners/527850063360163840/7cd915076a63bd491d77b471b241b8a7.png?size=512",
+    banner:
+      "https://cdn.discordapp.com/banners/527850063360163840/7cd915076a63bd491d77b471b241b8a7.png?size=512",
     banner_color: "#000000",
-    badges: ["nitro2", "booster3", "og_badge", "quest"],
+    badges: ["nitro_emerald", "booster_dia_spark", "og_badge", "quest"],
     created_at: "2018-12-27T00:00:00.000Z",
-  }
+  },
+  "698631401196617800": {
+    username: "lubjub",
+    avatar:
+      "https://cdn.discordapp.com/avatars/698631401196617800/bb5d0e5b4e3e71bb501d7330530fe7f2.webp?size=100",
+    avatar_deco:
+      "https://cdn.discordapp.com/avatar-decoration-presets/a_c3cffc19e9784f7d0b005eecdf1b566e.png?size=240&passthrough=false",
+    avatar_deco_gif:
+      "https://cdn.discordapp.com/avatar-decoration-presets/a_c3cffc19e9784f7d0b005eecdf1b566e.png?size=240&passthrough=true",
+    bio: `
+      Join my cool server!<br>
+      <a href="https://discord.gg/yTreH64JBC" target="_blank">https://discord.gg/yTreH64JBC</a><br><br>
+      I'm an adult btw.<br>
+      (he/him)<br><br>
+      <i>Good things don’t come to people who wait, they come to people who go out and fucking earn it.</i>
+    `,
+    status: "2 dreamspaces in 1 day 💀",
+    banner:
+      "https://cdn.discordapp.com/banners/698631401196617800/a_5267e180eac6a1e5a39b53c0476b3112.gif?size=512",
+    badges: ["nitro_silver", "hypesquad_balance", "booster_gem", "og_badge", "quest"],
+    created_at: "2020-04-11T10:00:00.000Z"
+  },
 };
 
 // Aliases for the same user
-MOCK_USERS["mythicdude_40528"] = MOCK_USERS["1248988886605103222"];
+["discord", "Discord"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["0"]);
 
-MOCK_USERS["not.unnamed"] = MOCK_USERS["611204110955446301"];
+["not.unnamed", "Unnamed", "unnamed"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["611204110955446301"]);
 
-MOCK_USERS["blodhest"] = MOCK_USERS["478866862537441291"];
+["mythicdude_40528", "Mythic", "mythic", "Mythicdude", "mythicdude", "William", "william"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["1248988886605103222"]);
 
-MOCK_USERS["unknown_00069"] = MOCK_USERS["847388436263337984"];
+["blodhest", "Blodhest"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["478866862537441291"]);
 
-MOCK_USERS[".thetacodude"] = MOCK_USERS["424944737305493505"];
+["unknown_00069", "unknown", "Unknown"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["847388436263337984"]);
 
-MOCK_USERS["fastfifo"] = MOCK_USERS["527850063360163840"];
+[".thetacodude", "Taco", "taco", "tacodude", "Tacodude"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["424944737305493505"]);
+
+["fastfifo", "FastFIFO", "Fifo", "fifo"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["527850063360163840"]);
+
+["lubjub", "Lubjub", "LubJub"].forEach(alias => MOCK_USERS[alias] = MOCK_USERS["698631401196617800"]);
 
 function formatDate(iso) {
   const date = new Date(iso);
@@ -177,7 +280,7 @@ MOCK_USERS["1248988886605103222"].activities = [
     logo: "https://static.wikia.nocookie.net/logopedia/images/6/6f/Roblox_app_2022.svg/revision/latest?cb=20230413000311",
     icon: "🎮",
     title: "Roblox",
-    meta: "Now • 7x Streak",
+    meta: "Now • 8x Streak",
   },
   {
     logo: "https://static.wikia.nocookie.net/logopedia/images/4/41/Geometry_Dash_Icon.svg/revision/latest?cb=20220220121501",
@@ -285,7 +388,7 @@ MOCK_USERS["424944737305493505"].activities = [
     icon: "🚗",
     title: "Grand Theft Auto V",
     meta: "3w ago • Returning after 4 month",
-  }
+  },
 ];
 
 // Render activity tab
@@ -393,7 +496,7 @@ function renderUser(user) {
     .map(
       (b) =>
         `<span class="badge" title="${b.replace("_", " ")}">${
-          BADGE_ICONS[b] || "🏅"
+          BADGE_ICONS[b] || ""
         }</span>`
     )
     .join("");

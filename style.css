@@ -89,8 +89,8 @@ button:hover {
 }
 .avatar-deco {
   position: absolute;
-  left: -2px;
-  top: 0;
+  left: -3.33px;
+  top: -4px;
   width: 96px;
   height: 96px;
   z-index: 4;
