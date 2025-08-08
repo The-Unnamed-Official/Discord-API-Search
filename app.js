@@ -128,6 +128,8 @@ MOCK_USERS["unknown_00069"] = MOCK_USERS["847388436263337984"];
 
 MOCK_USERS[".thetacodude"] = MOCK_USERS["424944737305493505"];
 
+MOCK_USERS["fastfifo"] = MOCK_USERS["527850063360163840"];
+
 function formatDate(iso) {
   const date = new Date(iso);
   return date.toLocaleDateString(undefined, {
