@@ -10,8 +10,10 @@ document.getElementById("activityTab").innerHTML = "";
 // Badge icons using Discord's official badge SVGs
 const BADGE_ICONS = {
   nitro:    '<img src="https://cdn.discordapp.com/badge-icons/0334688279c8359120922938dcb1d6f8.png" alt="Nitro" title="Nitro" class="badge-icon">',
+  nitro2:    '<img src="https://cdn.discordapp.com/badge-icons/11e2d339068b55d3a506cff34d3780f3.png" alt="Nitro2" title="Nitro2" class="badge-icon">',
   booster:  '<img src="https://cdn.discordapp.com/badge-icons/7142225d31238f6387d9f09efaa02759.png" alt="Booster" title="Booster" class="badge-icon">',
   booster2:  '<img src="https://cdn.discordapp.com/badge-icons/51040c70d4f20a921ad6674ff86fc95c.png" alt="Booster2" title="Booster2" class="badge-icon">',
+  booster3:  '<img src="https://cdn.discordapp.com/badge-icons/ec92202290b48d0879b7413d2dde3bab.png" alt="Booster3" title="Booster3" class="badge-icon">',
   hypesquad: '<img src="https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png" alt="HypeSquad Events" title="HypeSquad Events" class="badge-icon">',
   og_badge: '<img src="https://cdn.discordapp.com/badge-icons/6de6d34650760ba5551a79732e98ed60.png" alt="OG Badge" title="OG Badge" class="badge-icon">',
   quest: '<img src="https://cdn.discordapp.com/badge-icons/7d9ae358c8c5e118768335dbe68b4fb8.png" alt="Quest" title="Quest" class="badge-icon">',
@@ -106,14 +108,26 @@ const MOCK_USERS = {
   "527850063360163840": {
     username: "fastfifo",
     avatar: "https://cdn.discordapp.com/avatars/527850063360163840/09a09323a1145b74b45afd042c7c8b75.webp?size=160",
-    avatar_deco: "https://cdn.discordapp.com/avatar-decoration-presets/a_1b2c3d4e5f6g7h8i9j.png?size=160&passthrough=false",
-    avatar_deco_gif: "https://cdn.discordapp.com/avatar-decoration-presets/a_1b2c3d4e5f6g7h8i9j.png?size=160&passthrough=true",
-    bio: "",
-    status: "",
-    banner: "",
+    avatar_deco: "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=false",
+    avatar_deco_gif: "https://cdn.discordapp.com/avatar-decoration-presets/a_d72066b8cecbadd9fc951913ebcc384f.png?size=240&passthrough=true",
+    bio: `
+      Taken by my gorgeous fiancé<br>
+      <span style="color:#ff0000;"><img src="https://cdn.pixabay.com/photo/2021/05/22/11/38/yt-6273367_640.png" alt="YouTube" style="width:1.5em;height:1em;vertical-align:middle;"></span> 18K<br>
+      im 20 and im very cool<br>
+      》This is just FastFIFO.<br>
+      <br>
+      <b>Server:</b> <a href="https://discord.gg/TQ4CK92cTy" target="_blank">https://discord.gg/TQ4CK92cTy</a><br>
+      <br>
+      <blockquote>
+      <b>About me:</b><br>
+        - <a href="https://fastfifo.carrd.co/" target="_blank">https://fastfifo.carrd.co/</a>
+      </blockquote>
+    `,
+    status: "Sesto Elemento my beloved!",
+    banner: "https://cdn.discordapp.com/banners/527850063360163840/7cd915076a63bd491d77b471b241b8a7.png?size=512",
     banner_color: "#000000",
-    badges: [],
-    created_at: "2020-01-01T00:00:00.000Z",
+    badges: ["nitro2", "booster3", "og_badge", "quest"],
+    created_at: "2018-12-27T00:00:00.000Z",
   }
 };
 

@@ -292,3 +292,13 @@ button:hover {
 .hidden {
   display: none !important;
 }
+.bio blockquote {
+  margin: 8px 0 8px 0;
+  padding-left: 12px;
+  border-left: 4px solid #4e5058;
+  color: #b5bac1;
+  background: none;
+  font-style: normal;
+  font-size: 15px;
+  text-align: left;
+}
