@@ -16,17 +16,17 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-icon">🔍</span>
+      <span class="brand-icon"><img src="https://cdn-icons-png.flaticon.com/512/5968/5968756.png" width="32" alt="Brand Icon Part 1"><img src="https://cdn3.emoji.gg/emojis/9422-id.png" width="32" alt="Brand Icon Part 2"></span>
       <h1 class="brand-title">Discord User Search</h1>
     </div>
     <nav class="top-links">
       <a class="nav-btn" href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener">API</a>
-      <a class="nav-btn" href="https://github.com/OWNER/REPO" target="_blank" rel="noopener">Source</a>
+      <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source</a>
     </nav>
   </header>
 
   <main class="shell">
-    <section class="panel panel--primary search-panel" data-animate>
+  <section class="panel panel--primary search-panel" data-animate data-anim-dir="left">
       <h2 class="panel-label">Lookup</h2>
       <form id="searchForm" class="search-form" autocomplete="off">
         <div class="search-field-wrap">
@@ -41,16 +41,16 @@
       <p class="helper-line">Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID</p>
     </section>
 
-    <section id="userCard" class="panel panel--glass user-card empty" aria-live="polite" data-animate>
+  <section id="userCard" class="panel panel--glass user-card empty" aria-live="polite" data-animate data-anim-dir="up">
       <div class="placeholder-msg">
         <div class="placeholder-icon">🧪</div>
         <p>Enter an ID to fetch a public user profile.</p>
       </div>
     </section>
 
-    <aside class="panel panel--info info-card" id="infoCard" data-animate>
+  <aside class="panel panel--info info-card" id="infoCard" data-animate data-anim-dir="right">
       <div class="info-header">
-        <div class="info-icon" aria-hidden="true">ℹ️</div>
+        <div class="info-icon" aria-hidden="true"><img src="https://cdn3.emoji.gg/emojis/70178-information.png" width="32" alt="Information Icon"></div>
         <h2 class="info-title">Help & Tips</h2>
       </div>
 
@@ -72,25 +72,20 @@
         </ul>
       </div>
 
-      <details class="info-details" open>
-        <summary>
-          <span class="summary-icon">🛠️</span>
+  <details class="info-details">
+        <summary tabindex="0">
+          <span class="summary-icon"><img src="https://cdn3.emoji.gg/emojis/8377-staff-blue.png" width="24" alt="Troubleshooting Icon"></span>
           <span>Troubleshooting</span>
           <span class="chevron" aria-hidden="true"></span>
         </summary>
         <div class="collapsible-body">
           <ul class="tip-list compact">
-            <li><span class="ti ti-net"></span>No response → check Worker URL</li>
-            <li><span class="ti ti-refresh"></span>Weird HTML → wrong path / 404</li>
+            <li><span class="ti ti-net"></span>No response → contact me <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues" target="_blank" rel="noopener" class="issue-link">here</a></li>
+            <li><span class="ti ti-refresh"></span>Weird HTML → wrong path / 404 - contact me <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues" target="_blank" rel="noopener" class="issue-link">here</a></li>
             <li><span class="ti ti-rate"></span>Repeated 429 → pause a minute</li>
           </ul>
         </div>
       </details>
-
-      <div class="info-footer">
-        <a href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener" class="doc-link">Repo</a>
-        <a href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener" class="doc-link">Docs</a>
-      </div>
     </aside>
   </main>
 
@@ -99,6 +94,23 @@
   </footer>
 
   <div class="focus-ring-portal" aria-hidden="true"></div>
+  <!-- Settings floating button & panel -->
+  <div class="settings-root" id="settingsRoot">
+    <button class="settings-fab" id="settingsFab" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+      <span class="gear" aria-hidden="true"></span>
+    </button>
+    <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Settings">
+      <div class="settings-heading">Settings</div>
+      <div class="settings-section">
+        <label class="theme-toggle" for="themeToggle">
+          <input type="checkbox" id="themeToggle" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="toggle-text">Light mode</span>
+        </label>
+      </div>
+      <div class="settings-hint">Preference is saved locally</div>
+    </div>
+  </div>
 <script src="script.js"></script>
 </body>
 </html>
