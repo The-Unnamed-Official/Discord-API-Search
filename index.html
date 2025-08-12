@@ -16,12 +16,12 @@
 
   <header class="topbar">
     <div class="brand">
-      <span class="brand-icon">🔍</span>
+      <span class="brand-icon"><img src="https://cdn-icons-png.flaticon.com/512/5968/5968756.png" width="32" alt="Brand Icon"></span>
       <h1 class="brand-title">Discord User Search</h1>
     </div>
     <nav class="top-links">
       <a class="nav-btn" href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener">API</a>
-      <a class="nav-btn" href="https://github.com/OWNER/REPO" target="_blank" rel="noopener">Source</a>
+      <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source</a>
     </nav>
   </header>
 
@@ -50,7 +50,7 @@
 
     <aside class="panel panel--info info-card" id="infoCard" data-animate>
       <div class="info-header">
-        <div class="info-icon" aria-hidden="true">ℹ️</div>
+        <div class="info-icon" aria-hidden="true"><img src="https://cdn3.emoji.gg/emojis/70178-information.png" width="32" alt="Information Icon"></div>
         <h2 class="info-title">Help & Tips</h2>
       </div>
 
@@ -74,7 +74,7 @@
 
       <details class="info-details" open>
         <summary>
-          <span class="summary-icon">🛠️</span>
+          <span class="summary-icon"><img src="https://cdn3.emoji.gg/emojis/8377-staff-blue.png" width="24" alt="Troubleshooting Icon"></span>
           <span>Troubleshooting</span>
           <span class="chevron" aria-hidden="true"></span>
         </summary>
@@ -86,11 +86,6 @@
           </ul>
         </div>
       </details>
-
-      <div class="info-footer">
-        <a href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener" class="doc-link">Repo</a>
-        <a href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener" class="doc-link">Docs</a>
-      </div>
     </aside>
   </main>
 
@@ -99,6 +94,23 @@
   </footer>
 
   <div class="focus-ring-portal" aria-hidden="true"></div>
+  <!-- Settings floating button & panel -->
+  <div class="settings-root" id="settingsRoot">
+    <button class="settings-fab" id="settingsFab" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+      <span class="gear" aria-hidden="true"></span>
+    </button>
+    <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Settings">
+      <div class="settings-heading">Settings</div>
+      <div class="settings-section">
+        <label class="theme-toggle" for="themeToggle">
+          <input type="checkbox" id="themeToggle" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="toggle-text">Light mode</span>
+        </label>
+      </div>
+      <div class="settings-hint">Preference is saved locally</div>
+    </div>
+  </div>
 <script src="script.js"></script>
 </body>
 </html>

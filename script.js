@@ -62,7 +62,7 @@ function renderUserCard(user) {
       style="${bannerStyle}"
       ${banner.gif ? `data-static="${banner.static}" data-gif="${banner.gif}"`:''}></div>
     <div class="avatar-wrapper">
-      <img class="avatar" id="avatar" src="${avatar.static}" data-static="${avatar.static}"
+    <img class="avatar intro" id="avatar" src="${avatar.static}" data-static="${avatar.static}"
         ${avatar.gif ? `data-gif="${avatar.gif}"`:''} alt="Avatar of ${escapeHTML(user.username)}" draggable="false">
     </div>
     <div class="username">${escapeHTML(user.username)}</div>
@@ -114,6 +114,25 @@ function wireMediaHover() {
   if (a && a.dataset.gif) {
     a.addEventListener('mouseenter', () => a.src = a.dataset.gif);
     a.addEventListener('mouseleave', () => a.src = a.dataset.static);
+  }
+  // Click spin + bounce animation
+  if (a) {
+    // Avoid stacking listeners if re-rendered
+    if (!a.dataset.clickAnimBound) {
+      a.addEventListener('click', () => {
+        if (a.classList.contains('spin-bounce')) return; // already animating
+        a.classList.add('spin-bounce');
+      });
+      a.addEventListener('animationend', (ev) => {
+        if (ev.animationName === 'avatarSpin') {
+          a.classList.remove('spin-bounce');
+        }
+        if (ev.animationName === 'avatarIn') {
+          a.classList.remove('intro'); // ensure intro animation does not replay
+        }
+      }, { passive:true });
+      a.dataset.clickAnimBound = '1';
+    }
   }
   const b = document.getElementById('banner');
   if (b && b.dataset.gif) {
@@ -182,4 +201,57 @@ input.addEventListener('input', () => {
 /* Progressive animated reveal for first paint */
 window.addEventListener('DOMContentLoaded', () => {
   // Stagger already handled via nth-of-type; can add manual delay if needed.
+  initTheme();
+  wireSettings();
 });
+
+/* ------------ Theme / Settings ------------ */
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
+  const theme = saved || (prefersLight ? 'light' : 'dark');
+  applyTheme(theme);
+  const toggle = document.getElementById('themeToggle');
+  if (toggle) toggle.checked = theme === 'light';
+}
+function applyTheme(theme) {
+  const root = document.documentElement;
+  beginThemeTransition();
+  if (theme === 'light') root.setAttribute('data-theme','light'); else root.removeAttribute('data-theme');
+  localStorage.setItem('theme', theme);
+}
+let __themeTransitionTimer;
+function beginThemeTransition() {
+  const root = document.documentElement;
+  root.classList.add('theme-transition');
+  clearTimeout(__themeTransitionTimer);
+  __themeTransitionTimer = setTimeout(()=> root.classList.remove('theme-transition'), 650);
+}
+function wireSettings() {
+  const fab = document.getElementById('settingsFab');
+  const root = document.getElementById('settingsRoot');
+  const panel = document.getElementById('settingsPanel');
+  const toggle = document.getElementById('themeToggle');
+  if (!fab || !root) return;
+  fab.addEventListener('click', () => {
+    const open = root.classList.toggle('open');
+    fab.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) panel?.focus?.();
+  });
+  document.addEventListener('click', e => {
+    if (!root.classList.contains('open')) return;
+    if (e.target === fab || root.contains(e.target)) return;
+    root.classList.remove('open');
+    fab.setAttribute('aria-expanded','false');
+  });
+  if (toggle) {
+    toggle.addEventListener('change', () => applyTheme(toggle.checked ? 'light':'dark'));
+  }
+  // Close on escape
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && root.classList.contains('open')) {
+      root.classList.remove('open');
+      fab.setAttribute('aria-expanded','false');
+    }
+  });
+}
