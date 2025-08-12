@@ -87,7 +87,7 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
   z-index:20;
 }
 .brand { display:flex; align-items:center; gap:12px; }
-.brand-icon { font-size:1.5rem; filter:drop-shadow(0 2px 4px #0008); margin-top: 14px; animation: floatY 5s ease-in-out infinite; }
+.brand-icon { font-size:1.5rem; margin-top: 14px; animation: floatY 5s ease-in-out infinite; }
 .brand-title { font-size:1.1rem; letter-spacing:.5px; font-weight:600; margin:0; background:linear-gradient(120deg,#fff,#cdd2e4); -webkit-background-clip:text; color:transparent; }
 .top-links { display:flex; gap:12px; }
 .nav-btn {
@@ -828,6 +828,9 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 .foot {
   position:fixed;
   left:0; right:0; bottom:0;
+  display:flex;
+  align-items:center;
+  justify-content:center; /* center middle label */
   text-align:center;
   padding:10px 16px 14px;
   font-size:.6rem;
@@ -836,9 +839,12 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
   backdrop-filter:blur(6px);
   background:linear-gradient(180deg,#0e10141a,#0e10143a 60%,#0e101450);
   z-index:1;
-  pointer-events:none;
+  /* Allow interaction if footer gets links later */
+  pointer-events:auto;
 }
 :root[data-theme="light"] .foot { color:#88919d; }
+.foot-left { position:absolute; left:16px; font-size: medium; }
+.foot-center { pointer-events:none; }
 
 /* ---------- Focus Portal (optional visual) ---------- */
 .focus-ring-portal {
@@ -1014,23 +1020,24 @@ body.shake-screen { background:var(--bg); }
 .brand-icon { position:relative; display:inline-flex; align-items:center; padding-left:4px; }
 .brand-icon img { 
   display:inline-block; width:32px; height:32px; border-radius:10px; 
-  background:#222831; border:2px solid #161a1f; box-shadow:0 4px 8px -3px #000a,0 0 0 1px #ffffff08 inset;
+  background:transparent; border:0; box-shadow:none; filter:none; 
   transform-origin:center; image-rendering:auto; 
-  transition:transform .55s cubic-bezier(.25,.75,.25,1), box-shadow .55s, filter .55s; 
+  transition:transform .55s cubic-bezier(.25,.75,.25,1); 
   will-change:transform;
 }
 .brand-icon img:first-child { margin-right:-6px; z-index:1; transform:rotate(-6deg); animation: iconSlideA .9s cubic-bezier(.25,.8,.3,1) .15s both, iconBobA 4.2s ease-in-out 1.05s infinite; }
 .brand-icon img:last-child { z-index:2; position:relative; transform:rotate(6deg); animation: iconSlideB .9s cubic-bezier(.25,.8,.3,1) .15s both, iconBobB 4.2s ease-in-out 1.05s infinite; }
 .brand-icon:hover img:first-child { transform:rotate(-10deg) translateY(-2px) translateX(3px) scale(.95); }
-.brand-icon:hover img:last-child { transform:rotate(10deg) translateY(-4px) translateX(-2px) scale(1.08); box-shadow:0 6px 16px -4px #000c,0 0 0 1px #ffffff20 inset; }
-.brand-icon:after { content:""; position:absolute; left:18px; top:50%; width:26px; height:26px; pointer-events:none; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle at 40% 40%,#ffffff22,transparent 70%); mix-blend-mode:overlay; opacity:.6; }
+.brand-icon:hover img:last-child { transform:rotate(10deg) translateY(-4px) translateX(-2px) scale(1.08); }
+.brand-icon:after { content:""; position:absolute; left:18px; top:50%; width:26px; height:26px; pointer-events:none; transform:translate(-50%,-50%); border-radius:50%; mix-blend-mode:overlay; opacity:.6; }
 
 @keyframes iconSlideA { 0% { transform:translateX(-18px) scale(.6) rotate(-25deg); opacity:0; filter:blur(4px); } 60% { opacity:1; } 100% { transform:translateX(0) scale(1) rotate(0deg); opacity:1; filter:blur(0); } }
 @keyframes iconSlideB { 0% { transform:translateX(22px) scale(.6) rotate(25deg); opacity:0; filter:blur(4px); } 60% { opacity:1; } 100% { transform:translateX(0) scale(1) rotate(0deg); opacity:1; filter:blur(0); } }
 @keyframes iconBobA { 0%,100% { transform:rotate(-6deg) translateY(0); } 50% { transform:rotate(-6deg) translateY(-4px); } }
 @keyframes iconBobB { 0%,100% { transform:rotate(6deg) translateY(-4px); } 50% { transform:rotate(6deg) translateY(0); } }
 
-:root[data-theme="light"] .brand-icon img { background:#ffffff; border-color:#ffffff; box-shadow:0 4px 10px -4px #5c6b7a33,0 0 0 1px #d8dee6 inset; }
+:root[data-theme="light"] .brand-icon img { background:transparent; border:0; box-shadow:none; filter:none; }
+/* closing brace restored if previously missing */
 :root[data-theme="light"] .brand-icon:after { background:radial-gradient(circle at 45% 45%,#6474ff33,transparent 70%); mix-blend-mode:normal; opacity:.5; }
 
 /* ---------- Additional Light Theme Adjustments ---------- */
