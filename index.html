@@ -1,28 +1,69 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Discord User Search</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <div class="discord-main">
-      <div class="discord-container">
-        <h1>Discord User Search</h1>
-        <form id="searchForm">
-          <input
-            type="text"
-            id="userId"
-            placeholder="Enter user ID or username"
-            required
-          />
-          <button type="submit">Search</button>
-        </form>
-        <div id="userCard" class="user-card hidden"></div>
-        <div id="error" class="error"></div>
-      </div>
-      <div id="activityTab" class="activity-tab hidden"></div>
-    </div>
-    <script src="app.js"></script>
-  </body>
+<head>
+<meta charset="UTF-8">
+<title>Discord User Search</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://cdn.discordapp.com">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Discord User Search</h1>
+    <a class="repo-link" href="https://github.com/OWNER/REPO" target="_blank" rel="noopener">GitHub</a>
+  </header>
+
+  <main class="layout">
+    <section class="panel search-panel">
+      <form id="searchForm" class="search-form" autocomplete="off">
+        <input id="userId" type="text" placeholder="Enter numeric user ID" required>
+        <button type="submit">Search</button>
+      </form>
+
+      <details class="token-box" id="tokenBox">
+        <summary>Bot Token (local only)</summary>
+        <div class="token-inner">
+          <input id="botToken" type="password" placeholder="Paste bot token (not saved to repo)">
+          <div class="token-actions">
+            <button id="saveToken" type="button">Save</button>
+            <button id="clearToken" type="button">Clear</button>
+            <label class="show-token"><input id="toggleTokenVisible" type="checkbox"> Show</label>
+          </div>
+          <p class="token-note">
+            Token never leaves your browser except in requests you trigger to Discord.
+            Do NOT publish a site with a prefilled token. Anyone could misuse it.
+          </p>
+        </div>
+      </details>
+    </section>
+
+    <section id="userCard" class="panel user-card empty">
+      <div class="placeholder-msg">Enter a user ID above (15–30 digits). Example: 80351110224678912</div>
+    </section>
+
+    <aside class="panel info-card">
+      <h2>About</h2>
+      <p>This static page calls <code>/users/{id}</code> from Discord's REST API using a Bot token you supply.</p>
+      <ul class="tips">
+        <li>Never commit your token.</li>
+        <li>401/403 = bad/unauthorized token.</li>
+        <li>404 = User not found.</li>
+        <li>429 = Rate limited (slow down).</li>
+      </ul>
+      <details>
+        <summary>Troubleshooting</summary>
+        <ul class="tips">
+          <li>No network entry → extension or offline.</li>
+          <li>Status 0 → CORS / network blocked (rare); use proxy (see README).</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+
+  <footer class="foot">
+    <span>Local client prototype • Do not expose real secrets</span>
+  </footer>
+
+<script src="script.js"></script>
+</body>
 </html>
