@@ -103,10 +103,33 @@ function showLoading() {
 }
 
 function showError(msg, detail='') {
-  const details = detail
-    ? `<details><summary>details</summary><pre style="white-space:pre-wrap;font-size:.65rem;line-height:1.25;max-height:180px;overflow:auto;">${escapeHTML(detail.slice(0,1600))}</pre></details>`
-    : '';
-  setCard(`<div class="error">${escapeHTML(msg)}</div>${details}`);
+  let extra = '';
+  if (detail) {
+    const safe = escapeHTML(detail); // full text; scrolling handled via CSS
+    extra = `\n<details class="err-details" open>\n  <summary><span class="err-icon" aria-hidden="true">!</span><span>Details</span><span class="chevron" aria-hidden="true"></span></summary>\n  <div class="collapsible-body">\n    <pre class="err-pre">${safe}</pre>\n  </div>\n</details>`;
+  }
+  setCard(`<div class="error">${escapeHTML(msg)}${extra}</div>`);
+  // Apply same animation enhancement to error details
+  const d = document.querySelector('#userCard .err-details');
+  if (d) {
+    const summary = d.querySelector('summary');
+    const body = d.querySelector('.collapsible-body');
+    if (summary && body) {
+      body.style.display='block';
+      summary.addEventListener('click', e => { e.preventDefault(); const isOpen = d.hasAttribute('open'); animateDetails(d, body, !isOpen); });
+    }
+  }
+}
+
+function shakeScreen() {
+  const body = document.body;
+  const html = document.documentElement;
+  body.classList.remove('shake-screen');
+  html.classList.remove('shake-screen');
+  void body.offsetWidth; // reflow to restart animation
+  body.classList.add('shake-screen');
+  html.classList.add('shake-screen');
+  setTimeout(()=> { body.classList.remove('shake-screen'); html.classList.remove('shake-screen'); }, 650);
 }
 
 function wireMediaHover() {
@@ -170,7 +193,7 @@ let abortController = null;
 form.addEventListener('submit', async e => {
   e.preventDefault();
   const id = input.value.trim();
-  if (!/^\d{5,30}$/.test(id)) { showError('Enter a numeric Discord user ID (5–30 digits).'); return; }
+  if (!/^\d{5,30}$/.test(id)) { showError('Enter a numeric Discord user ID (5–30 digits).'); shakeScreen(); return; }
 
   if (abortController) abortController.abort();
   abortController = new AbortController();
@@ -183,7 +206,7 @@ form.addEventListener('submit', async e => {
     wireMediaHover();
   } catch (err) {
     if (err.name === 'AbortError') return;
-    if (err.status === 404) showError('User not found (404).', err.body||'');
+  if (err.status === 404) { showError('User not found (404).', err.body||''); shakeScreen(); }
     else if (err.status === 429) showError('Rate limited (429).', err.body||'');
     else if (err.status) showError(`HTTP ${err.status}`, err.body||'');
     else showError('Network error.');
@@ -203,6 +226,8 @@ window.addEventListener('DOMContentLoaded', () => {
   // Stagger already handled via nth-of-type; can add manual delay if needed.
   initTheme();
   wireSettings();
+  activateNoScrollbar();
+  enhanceDetailsAnimation();
 });
 
 /* ------------ Theme / Settings ------------ */
@@ -227,6 +252,96 @@ function beginThemeTransition() {
   clearTimeout(__themeTransitionTimer);
   __themeTransitionTimer = setTimeout(()=> root.classList.remove('theme-transition'), 650);
 }
+/* ------------ No Scrollbar Mode (preserve layout width) ------------ */
+function activateNoScrollbar() {
+  const MOBILE_BREAKPOINT = 900; // px width below which we allow native scrolling
+  function applyMode() {
+    const isMobileLike = window.innerWidth < MOBILE_BREAKPOINT || window.matchMedia('(pointer: coarse)').matches;
+    if (isMobileLike) {
+      document.documentElement.classList.remove('no-scrollbar');
+      document.body.classList.remove('no-scrollbar');
+      document.body.style.paddingRight = '';
+      return;
+    }
+    // Desktop: hide scrollbar while preserving layout
+    const sbw = window.innerWidth - document.documentElement.clientWidth;
+    if (sbw > 0) document.body.style.paddingRight = sbw + 'px';
+    document.documentElement.classList.add('no-scrollbar');
+    document.body.classList.add('no-scrollbar');
+  }
+  applyMode();
+  // Listen for viewport changes
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(applyMode, 120);
+  });
+  // React to pointer type changes (orientation / input method shifts)
+  const coarseQuery = window.matchMedia('(pointer: coarse)');
+  if (coarseQuery.addEventListener) {
+    coarseQuery.addEventListener('change', applyMode);
+  } else if (coarseQuery.addListener) { // legacy Safari
+    coarseQuery.addListener(applyMode);
+  }
+}
+
+/* ------------ Smooth <details> animation (Troubleshooting) ------------ */
+function enhanceDetailsAnimation() {
+  const detailsEls = document.querySelectorAll('.info-details');
+  detailsEls.forEach(d => {
+    const summary = d.querySelector('summary');
+    const body = d.querySelector('.collapsible-body');
+    if (!summary || !body) return;
+    // Ensure body has block layout for measurement
+    body.style.display = 'block';
+    summary.addEventListener('click', e => {
+      e.preventDefault(); // we'll toggle manually
+      const isOpen = d.hasAttribute('open');
+      animateDetails(d, body, !isOpen);
+    });
+  });
+}
+
+function animateDetails(detailsEl, bodyEl, open) {
+  if (detailsEl.classList.contains('animating')) return;
+  detailsEl.classList.add('animating');
+  detailsEl.classList.remove('toggling-open','toggling-close');
+  detailsEl.classList.add(open ? 'toggling-open':'toggling-close');
+  const startHeight = bodyEl.getBoundingClientRect().height;
+  if (open) {
+    detailsEl.setAttribute('open','');
+  }
+  // measure target
+  const targetHeight = open ? bodyEl.getBoundingClientRect().height : 0;
+  // revert to start height for transition
+  bodyEl.style.height = startHeight + 'px';
+  bodyEl.style.transition = 'height .5s cubic-bezier(.25,.8,.3,1), margin-top .5s cubic-bezier(.25,.8,.3,1), transform .5s cubic-bezier(.25,.8,.3,1), opacity .4s ease';
+  if (open) { bodyEl.style.transform='scaleY(.6)'; bodyEl.style.opacity='0'; requestAnimationFrame(()=> { bodyEl.style.transform='scaleY(1)'; bodyEl.style.opacity='1'; }); }
+  requestAnimationFrame(() => {
+    bodyEl.style.height = targetHeight + 'px';
+    if (!open) {
+      bodyEl.style.marginTop = '0px';
+      bodyEl.style.transform='scaleY(.6)';
+      bodyEl.style.opacity='0';
+    } else {
+      bodyEl.style.marginTop = '12px';
+    }
+  });
+  bodyEl.addEventListener('transitionend', function onEnd() {
+    bodyEl.removeEventListener('transitionend', onEnd);
+  bodyEl.style.transition = '';
+  bodyEl.style.height = '';
+  bodyEl.style.transform=''; bodyEl.style.opacity=''; bodyEl.style.marginTop='';
+    if (!open) {
+      detailsEl.removeAttribute('open');
+      bodyEl.style.display = 'block';
+    }
+    detailsEl.classList.remove('animating','toggling-open','toggling-close');
+  });
+  if (!open) {
+    // schedule height animation with attribute removal afterwards
+  }
+}
 function wireSettings() {
   const fab = document.getElementById('settingsFab');
   const root = document.getElementById('settingsRoot');
@@ -237,6 +352,16 @@ function wireSettings() {
     const open = root.classList.toggle('open');
     fab.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) panel?.focus?.();
+    // Trigger slow spin animation
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!prefersReduced) {
+      // Restart spin each click
+      fab.classList.remove('spin');
+      // Force reflow
+      void fab.offsetWidth;
+      fab.classList.add('spin');
+      setTimeout(()=> fab.classList.remove('spin'), 2000);
+    }
   });
   document.addEventListener('click', e => {
     if (!root.classList.contains('open')) return;
