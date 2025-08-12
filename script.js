@@ -117,8 +117,12 @@ function wireMediaHover() {
   }
   const b = document.getElementById('banner');
   if (b && b.dataset.gif) {
-    b.addEventListener('mouseenter', () => { b.style.backgroundImage = `url('${b.dataset.gif}')`; b.style.background=''; });
-    b.addEventListener('mouseleave', () => { b.style.backgroundImage = `url('${b.dataset.static}')`; });
+    b.addEventListener('mouseenter', () => {
+      b.style.backgroundImage = `url('${b.dataset.gif}')`;
+    });
+    b.addEventListener('mouseleave', () => {
+      b.style.backgroundImage = `url('${b.dataset.static}')`;
+    });
   }
 }
 
