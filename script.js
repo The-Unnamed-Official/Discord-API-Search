@@ -1,5 +1,6 @@
+// (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
-const API_BASE = 'https://discord.com/api/v10';
+const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const cache = new Map();
 let currentReqToken = 0;
 
@@ -10,7 +11,6 @@ function snowflakeToDate(id) {
 function escapeHTML(s='') {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-function normalizeToken(t) { return t.replace(/^Bot\s+/i,'').trim(); }
 
 /* ------------ Badges ------------ */
 const BADGES = [
@@ -20,7 +20,7 @@ const BADGES = [
 ];
 function renderBadges(flags=0) {
   const out = BADGES.filter(b => flags & b.flag)
-    .map(b => `<img class="badge-icon" src="${b.icon}" title="${escapeHTML(b.name)}" loading="lazy">`)
+    .map(b => `<img class="badge-icon" src="${b.icon}" title="${escapeHTML(b.name)}" loading="lazy" draggable="false">`)
     .join('');
   return out || '<span class="no-badges">No public badges</span>';
 }
@@ -43,7 +43,7 @@ function getBanner(user) {
   }
   const accent = user.accent_color != null
     ? '#' + user.accent_color.toString(16).padStart(6,'0')
-    : '#232428';
+    : '#262b33';
   return { static:accent, gif:'' };
 }
 
@@ -72,18 +72,43 @@ function renderUserCard(user) {
   `;
 }
 
+/* ------------ Skeleton / States ------------ */
+function skeletonCard() {
+  return `
+    <div class="skeleton">
+      <div class="skel-banner"></div>
+      <div class="skel-avatar"></div>
+      <div class="skel-body">
+        <div class="skel-line"></div>
+        <div class="skel-line skel-small"></div>
+        <div class="skel-badges">
+          <div class="skel-pill"></div>
+          <div class="skel-pill"></div>
+          <div class="skel-pill"></div>
+        </div>
+        <div class="skel-line skel-small" style="width:68%;"></div>
+      </div>
+    </div>
+  `;
+}
+
 function setCard(html, cls='') {
   const card = document.getElementById('userCard');
-  card.className = `panel user-card ${cls}`.trim();
+  card.className = `panel panel--glass user-card ${cls}`.trim();
   card.innerHTML = html;
 }
-function showLoading() { setCard('<div class="loading">Loading...</div>'); }
+
+function showLoading() {
+  setCard(skeletonCard(), 'loading-state');
+}
+
 function showError(msg, detail='') {
   const details = detail
-    ? `<details><summary>details</summary><pre style="white-space:pre-wrap;font-size:.7em;line-height:1.25;max-height:180px;overflow:auto;">${escapeHTML(detail.slice(0,2000))}</pre></details>`
+    ? `<details><summary>details</summary><pre style="white-space:pre-wrap;font-size:.65rem;line-height:1.25;max-height:180px;overflow:auto;">${escapeHTML(detail.slice(0,1600))}</pre></details>`
     : '';
   setCard(`<div class="error">${escapeHTML(msg)}</div>${details}`);
 }
+
 function wireMediaHover() {
   const a = document.getElementById('avatar');
   if (a && a.dataset.gif) {
@@ -98,15 +123,9 @@ function wireMediaHover() {
 }
 
 /* ------------ Fetch ------------ */
-async function fetchDiscordUser(token, userId, signal) {
-  const t = normalizeToken(token);
-  const cacheKey = t.slice(0,12) + ':' + userId;
-  if (cache.has(cacheKey)) return cache.get(cacheKey);
-
-  const res = await fetch(`${API_BASE}/users/${userId}`, {
-    headers:{ Authorization:`Bot ${t}` },
-    signal
-  });
+async function fetchDiscordUser(userId, signal) {
+  if (cache.has(userId)) return cache.get(userId);
+  const res = await fetch(`${API_BASE}/users/${userId}`, { signal });
   const raw = await res.text();
   let json = null;
   try { json = raw ? JSON.parse(raw) : null; } catch {}
@@ -116,70 +135,47 @@ async function fetchDiscordUser(token, userId, signal) {
     err.body = raw;
     throw err;
   }
-  cache.set(cacheKey, json);
+  cache.set(userId, json);
   return json;
 }
 
-/* ------------ Token persistence ------------ */
-function loadToken() { return localStorage.getItem('discord_bot_token') || ''; }
-function saveToken(t) { t ? localStorage.setItem('discord_bot_token', normalizeToken(t)) : localStorage.removeItem('discord_bot_token'); }
-
-/* ------------ DOM wiring ------------ */
+/* ------------ DOM Wiring ------------ */
 const form = document.getElementById('searchForm');
 const input = document.getElementById('userId');
-const tokenInput = document.getElementById('botToken');
-const saveBtn = document.getElementById('saveToken');
-const clearBtn = document.getElementById('clearToken');
-const showChk = document.getElementById('toggleTokenVisible');
-tokenInput.value = loadToken();
-
-saveBtn.addEventListener('click', () => {
-  if (!tokenInput.value.trim()) { alert('Empty token.'); return; }
-  saveToken(tokenInput.value);
-  saveBtn.textContent = 'Saved';
-  setTimeout(()=> saveBtn.textContent='Save',1100);
-});
-clearBtn.addEventListener('click', () => {
-  tokenInput.value='';
-  saveToken('');
-});
-showChk.addEventListener('change', () => {
-  tokenInput.type = showChk.checked ? 'text' : 'password';
-});
-
 let abortController = null;
+
 form.addEventListener('submit', async e => {
   e.preventDefault();
   const id = input.value.trim();
   if (!/^\d{5,30}$/.test(id)) { showError('Enter a numeric Discord user ID (5–30 digits).'); return; }
-  const token = tokenInput.value.trim() || loadToken();
-  if (!token) { showError('Paste a bot token first.'); return; }
-  saveToken(token);
+
   if (abortController) abortController.abort();
   abortController = new AbortController();
   const reqToken = ++currentReqToken;
   showLoading();
   try {
-    const user = await fetchDiscordUser(token, id, abortController.signal);
+    const user = await fetchDiscordUser(id, abortController.signal);
     if (reqToken !== currentReqToken) return;
     setCard(renderUserCard(user));
     wireMediaHover();
   } catch (err) {
     if (err.name === 'AbortError') return;
-    console.warn('[Fetch failed]', err.status, err.body);
     if (err.status === 404) showError('User not found (404).', err.body||'');
-    else if (err.status === 401 || err.status === 403) showError('Unauthorized (401/403). Check token.', err.body||'');
-    else if (err.status === 400) showError('Bad request (400). ID malformed?', err.body||'');
-    else if (err.status === 429) showError('Rate limited (429). Slow down.', err.body||'');
-    else if (err.status) showError(`HTTP ${err.status} from Discord.`, err.body||'');
-    else showError('Network / CORS error (no status). Possible block.');
+    else if (err.status === 429) showError('Rate limited (429).', err.body||'');
+    else if (err.status) showError(`HTTP ${err.status}`, err.body||'');
+    else showError('Network error.');
   }
 });
 
-/* Optional debounce */
+/* Debounced auto-search */
 let debounceTimer;
 input.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   if (input.value.trim().length < 15) return;
-  debounceTimer = setTimeout(()=> form.dispatchEvent(new Event('submit')), 600);
+  debounceTimer = setTimeout(()=> form.dispatchEvent(new Event('submit')), 650);
+});
+
+/* Progressive animated reveal for first paint */
+window.addEventListener('DOMContentLoaded', () => {
+  // Stagger already handled via nth-of-type; can add manual delay if needed.
 });
