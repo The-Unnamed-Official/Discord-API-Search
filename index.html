@@ -8,62 +8,97 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="bg-decor">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="grain"></div>
+  </div>
+
   <header class="topbar">
-    <h1>Discord User Search</h1>
-    <a class="repo-link" href="https://github.com/OWNER/REPO" target="_blank" rel="noopener">GitHub</a>
+    <div class="brand">
+      <span class="brand-icon">🔍</span>
+      <h1 class="brand-title">Discord User Search</h1>
+    </div>
+    <nav class="top-links">
+      <a class="nav-btn" href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener">API</a>
+      <a class="nav-btn" href="https://github.com/OWNER/REPO" target="_blank" rel="noopener">Source</a>
+    </nav>
   </header>
 
-  <main class="layout">
-    <section class="panel search-panel">
+  <main class="shell">
+    <section class="panel panel--primary search-panel" data-animate>
+      <h2 class="panel-label">Lookup</h2>
       <form id="searchForm" class="search-form" autocomplete="off">
-        <input id="userId" type="text" placeholder="Enter numeric user ID" required>
-        <button type="submit">Search</button>
+        <div class="search-field-wrap">
+          <input id="userId" type="text" placeholder="Enter Discord user ID (snowflake)" required spellcheck="false" inputmode="numeric">
+          <div class="underline"></div>
+        </div>
+        <button type="submit" class="cta-btn">
+          <span class="btn-bg"></span>
+          <span class="btn-label">Search</span>
+        </button>
       </form>
+      <p class="helper-line">Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID</p>
+    </section>
 
-      <details class="token-box" id="tokenBox">
-        <summary>Bot Token (local only)</summary>
-        <div class="token-inner">
-          <input id="botToken" type="password" placeholder="Paste bot token (not saved to repo)">
-          <div class="token-actions">
-            <button id="saveToken" type="button">Save</button>
-            <button id="clearToken" type="button">Clear</button>
-            <label class="show-token"><input id="toggleTokenVisible" type="checkbox"> Show</label>
-          </div>
-          <p class="token-note">
-            Token never leaves your browser except in requests you trigger to Discord.
-            Do NOT publish a site with a prefilled token. Anyone could misuse it.
-          </p>
+    <section id="userCard" class="panel panel--glass user-card empty" aria-live="polite" data-animate>
+      <div class="placeholder-msg">
+        <div class="placeholder-icon">🧪</div>
+        <p>Enter an ID to fetch a public user profile.</p>
+      </div>
+    </section>
+
+    <aside class="panel panel--info info-card" id="infoCard" data-animate>
+      <div class="info-header">
+        <div class="info-icon" aria-hidden="true">ℹ️</div>
+        <h2 class="info-title">Help & Tips</h2>
+      </div>
+
+      <div class="info-section">
+        <h3><span>How it works</span></h3>
+        <p class="info-text">
+          Uses a lightweight proxy Worker to call Discord’s <code>/users/{id}</code> endpoint.
+          Returns avatar, banner, flags, and creation date (derived from the snowflake).
+        </p>
+      </div>
+
+      <div class="info-section">
+        <h3><span>Status Codes</span></h3>
+        <ul class="tip-list">
+          <li><span class="ti ti-ok"></span><strong>200</strong> User found</li>
+          <li><span class="ti ti-miss"></span><strong>404</strong> User not found</li>
+          <li><span class="ti ti-rate"></span><strong>429</strong> Rate limited</li>
+          <li><span class="ti ti-net"></span><strong>502+</strong> Upstream issues</li>
+        </ul>
+      </div>
+
+      <details class="info-details" open>
+        <summary>
+          <span class="summary-icon">🛠️</span>
+          <span>Troubleshooting</span>
+          <span class="chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="collapsible-body">
+          <ul class="tip-list compact">
+            <li><span class="ti ti-net"></span>No response → check Worker URL</li>
+            <li><span class="ti ti-refresh"></span>Weird HTML → wrong path / 404</li>
+            <li><span class="ti ti-rate"></span>Repeated 429 → pause a minute</li>
+          </ul>
         </div>
       </details>
-    </section>
 
-    <section id="userCard" class="panel user-card empty">
-      <div class="placeholder-msg">Enter a user ID above (15–30 digits). Example: 80351110224678912</div>
-    </section>
-
-    <aside class="panel info-card">
-      <h2>About</h2>
-      <p>This static page calls <code>/users/{id}</code> from Discord's REST API using a Bot token you supply.</p>
-      <ul class="tips">
-        <li>Never commit your token.</li>
-        <li>401/403 = bad/unauthorized token.</li>
-        <li>404 = User not found.</li>
-        <li>429 = Rate limited (slow down).</li>
-      </ul>
-      <details>
-        <summary>Troubleshooting</summary>
-        <ul class="tips">
-          <li>No network entry → extension or offline.</li>
-          <li>Status 0 → CORS / network blocked (rare); use proxy (see README).</li>
-        </ul>
-      </details>
+      <div class="info-footer">
+        <a href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener" class="doc-link">Repo</a>
+        <a href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener" class="doc-link">Docs</a>
+      </div>
     </aside>
   </main>
 
   <footer class="foot">
-    <span>Local client prototype • Do not expose real secrets</span>
+    <span>Prototype • Discord branding belongs to Discord</span>
   </footer>
 
+  <div class="focus-ring-portal" aria-hidden="true"></div>
 <script src="script.js"></script>
 </body>
 </html>
