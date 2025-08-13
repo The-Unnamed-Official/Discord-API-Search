@@ -30,6 +30,19 @@
     </nav>
   </header>
 
+  
+  <div class="shortcut-hints" id="shortcutHints" aria-label="Keyboard shortcuts">
+    <ul>
+      <li><kbd>Enter</kbd> Focus search</li>
+      <li><kbd>/</kbd> or <kbd>Ctrl+F</kbd> Focus search</li>
+      <li><kbd>T</kbd> Toggle theme</li>
+      <li><kbd>R</kbd> Reduced anim</li>
+      <li><kbd>H</kbd> Troubleshooting</li>
+      <li class="shortcut-sub" style="margin-left:1.5rem;"> <kbd>Alt+H+1</kbd> Copy & open <br>"No response"</li>
+      <li class="shortcut-sub" style="margin-left:1.5rem;"> <kbd>Alt+H+2</kbd> Copy & open <br>"Weird HTML"</li>
+    </ul>
+  </div>
+
   <main class="shell">
   <section class="panel panel--primary search-panel" data-animate data-anim-dir="left">
       <h2 class="panel-label">Lookup</h2>
@@ -85,8 +98,8 @@
         </summary>
         <div class="collapsible-body">
           <ul class="tip-list compact">
-            <li><span class="ti ti-net"></span>No response → contact me <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues" target="_blank" rel="noopener" class="issue-link">here</a></li>
-            <li><span class="ti ti-refresh"></span>Weird HTML → wrong path / 404 - contact me <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues" target="_blank" rel="noopener" class="issue-link">here</a></li>
+            <li><span class="ti ti-net"></span>No response → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Trouble with No response">here</a></li>
+            <li><span class="ti ti-refresh"></span>Weird HTML → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Weird HTML error / Wrong Path / 404 No users found">here</a></li>
             <li><span class="ti ti-rate"></span>Repeated 429 → pause a minute</li>
           </ul>
         </div>
@@ -105,8 +118,26 @@
     <button class="settings-fab" id="settingsFab" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
       <span class="gear" aria-hidden="true"></span>
     </button>
-    <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Settings">
-      <div class="settings-heading">Settings</div>
+    <div class="settings-panel"
+       id="settingsPanel"
+       role="dialog"
+       aria-modal="true"
+       tabindex="-1"
+       aria-labelledby="settingsHeading"
+       aria-describedby="settingsDesc">
+      <!-- Focus trap start -->
+      <div tabindex="0" class="focus-sentinel" data-sentinel="start"></div>
+
+      <h2 class="settings-heading" id="settingsHeading">Settings</h2>
+
+      <div class="settings-section">
+        <label class="reduce-anim-toggle" for="reduceAnimToggle">
+          <input type="checkbox" id="reduceAnimToggle" />
+          <span class="track"><span class="thumb"></span></span>
+          <span class="toggle-text">Reduced animations</span>
+        </label>
+      </div>
+      <div class="settings-hint small">Disables motion / shimmer / floating effects</div>
       <div class="settings-section">
         <label class="theme-toggle" for="themeToggle">
           <input type="checkbox" id="themeToggle" />
@@ -115,7 +146,9 @@
         </label>
       </div>
       <div class="settings-hint">Preference is saved locally</div>
-    </div>
+
+      <!-- Focus trap end -->
+      <div tabindex="0" class="focus-sentinel" data-sentinel="end"></div>
   </div>
 <script src="script.js"></script>
 </body>

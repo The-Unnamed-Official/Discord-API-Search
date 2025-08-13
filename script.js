@@ -380,3 +380,240 @@ function wireSettings() {
     }
   });
 }
+
+// Preferences
+const PREF_REDUCE_ANIM_KEY = 'pref_reduce_anim';
+
+function applyReduceAnim(pref) {
+  if (pref) {
+    document.documentElement.classList.add('reduced-anim');
+    finalizeAnimatedPanels();
+  } else {
+    document.documentElement.classList.remove('reduced-anim');
+    // Optionally remove inline overrides so future dynamic content can animate
+    document.querySelectorAll('[data-animate]').forEach(el => {
+      el.style.opacity = '';
+      el.style.transform = '';
+      el.style.filter = '';
+    });
+  }
+}
+
+function loadReduceAnimPref() {
+  const stored = localStorage.getItem(PREF_REDUCE_ANIM_KEY);
+  if (stored === null) {
+    // Auto-enable if user system already prefers reduced motion
+    const sys = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    applyReduceAnim(sys);
+    return sys;
+  }
+  const enabled = stored === '1';
+  applyReduceAnim(enabled);
+  return enabled;
+}
+
+function saveReduceAnimPref(on) {
+  localStorage.setItem(PREF_REDUCE_ANIM_KEY, on ? '1' : '0');
+  applyReduceAnim(on);
+}
+
+const reduceAnimToggle = document.getElementById('reduceAnimToggle');
+if (reduceAnimToggle) {
+  const initialReduce = loadReduceAnimPref();
+  reduceAnimToggle.checked = initialReduce;
+  reduceAnimToggle.addEventListener('change', () => {
+    saveReduceAnimPref(reduceAnimToggle.checked);
+  });
+} else {
+  // If toggle not present, still respect stored preference
+  loadReduceAnimPref();
+}
+
+/* ------------ Finalize Animated Panels ------------ */
+function finalizeAnimatedPanels() {
+  document.querySelectorAll('[data-animate]').forEach(el => {
+    el.style.opacity = '1';
+    el.style.transform = 'none';
+    el.style.filter = 'none';
+  });
+  // Also ensure user card content (if skeleton or loaded) is fully visible
+  const avatar = document.querySelector('.avatar');
+  if (avatar) avatar.style.transform = 'none';
+}
+
+
+/* -------- Keyboard Shortcut Enhancements -------- */
+function focusSearch() {
+  const el = document.getElementById('userId');
+  if (el) { el.focus(); el.select(); announceStatus('Search focused'); }
+}
+function toggleTheme() {
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  applyTheme(isLight ? 'dark' : 'light');
+  const toggle = document.getElementById('themeToggle');
+  if (toggle) toggle.checked = !isLight;
+  announceStatus('Theme ' + (isLight ? 'dark' : 'light'));
+}
+function toggleReducedAnimations() {
+  const willEnable = !document.documentElement.classList.contains('reduced-anim');
+  saveReduceAnimPref(willEnable);
+  const rToggle = document.getElementById('reduceAnimToggle');
+  if (rToggle) rToggle.checked = willEnable;
+  announceStatus('Reduced animations ' + (willEnable ? 'enabled' : 'disabled'));
+}
+function announceStatus(msg) {
+  const live = document.getElementById('statusLive');
+  if (live) live.textContent = msg;
+}
+
+document.addEventListener('keydown', e => {
+  // Ignore if user is typing in an input/textarea (except dedicated shortcuts)
+  const tag = (e.target.tagName || '').toLowerCase();
+  const inEditable = tag === 'input' || tag === 'textarea' || e.target.isContentEditable;
+
+  // Enter global focus when not inside search input (or if body focused)
+  if (e.key === 'Enter' && !e.altKey && !e.metaKey && !e.ctrlKey) {
+    if (!inEditable || e.target.id !== 'userId') {
+      e.preventDefault();
+      focusSearch();
+      return;
+    }
+  }
+
+  if (!e.altKey && !e.metaKey && !e.ctrlKey) {
+    if (e.key === 't' || e.key === 'T') {
+      e.preventDefault();
+      toggleTheme();
+    } else if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault();
+      toggleReducedAnimations();
+    } else if ((e.key === '/' && !inEditable) ) {
+      e.preventDefault();
+      focusSearch();
+    } else if ((e.key === 'h' || (e.shiftKey && e.key === '/')) && !inEditable) {
+      // Toggle troubleshooting details
+      const det = document.querySelector('.info-details');
+      if (det) {
+        const body = det.querySelector('.collapsible-body');
+        if (body) animateDetails(det, body, !det.hasAttribute('open'));
+        else det.open = !det.open;
+        announceStatus('Troubleshooting ' + (det.hasAttribute('open') ? 'opened' : 'closed'));
+      }
+    }
+  }
+
+  // Ctrl+F (browser find) – repurpose for search field focus
+  if (e.key.toLowerCase() === 'f' && e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    focusSearch();
+  }
+});
+
+// Live status helper
+function updateStatus(msg, tone) {
+  const el = document.getElementById('statusLive');
+  if (!el) return;
+  el.className = ''; // reset classes
+  el.id = 'statusLive';
+  if (tone) el.classList.add(`status-${tone}`);
+  if (msg) {
+    el.textContent = msg;
+    void el.offsetWidth;
+    el.classList.add('show','changed');
+  } else {
+    el.textContent = '';
+    el.classList.remove('show','changed','status-ok','status-warn','status-err');
+  }
+}
+
+// Enhance existing announceStatus (if present) to also call updateStatus
+if (typeof announceStatus === 'function') {
+  const _origAnnounce = announceStatus;
+  announceStatus = function(msg, tone) {
+    _origAnnounce(msg);
+    updateStatus(msg, tone);
+  };
+} else {
+  // fallback announceStatus
+  function announceStatus(msg, tone) { updateStatus(msg, tone); }
+}
+
+// Hotkey chord: Alt + H + 1 / Alt + H + 2 (while Troubleshooting open)
+const pressedKeys = new Set();
+const CHORD_KEY = 'h';
+document.addEventListener('keydown', (e) => {
+  const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+  if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+
+  pressedKeys.add(e.key.toLowerCase());
+
+  // Require Troubleshooting details open
+  const details = document.querySelector('.info-details');
+  const open = details && details.hasAttribute('open');
+  if (!open) return;
+
+  // Need Alt held and 'H' in the chord
+  if (e.altKey && pressedKeys.has(CHORD_KEY)) {
+    if (e.key === '1') {
+      e.preventDefault();
+      handleTroubleshootLink(0);
+    } else if (e.key === '2') {
+      e.preventDefault();
+      handleTroubleshootLink(1);
+    }
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  pressedKeys.delete(e.key.toLowerCase());
+});
+
+// Open link (index) and copy associated text
+function handleTroubleshootLink(idx) {
+  const links = document.querySelectorAll('.info-details .issue-link');
+  if (!links.length) return;
+  const link = links[idx] || links[0];
+
+  const copyTexts = [
+    'Trouble with No response',
+    'Weird HTML error / Wrong Path / 404 No users found'
+  ];
+  const text = copyTexts[idx] || copyTexts[0];
+
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(()=>{});
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch(_) {}
+      ta.remove();
+    }
+  } catch(_) {}
+
+  if (link && link.href) {
+    window.open(link.href, '_blank', 'noopener');
+  }
+  announceStatus(`Copied: ${text}`, 'ok');
+}
+
+// Optional: initial ready status
+updateStatus('Ready','ok');
+
+// Click on "make an issue" links should also copy the same canned text
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.info-details .issue-link');
+  if (!link) return;
+
+  const links = Array.from(document.querySelectorAll('.info-details .issue-link'));
+  const idx = links.indexOf(link);
+  if (idx === -1) return;
+
+  // Prevent the default immediate navigation so our copy + status fires first
+  e.preventDefault();
+  handleTroubleshootLink(idx);
+});
