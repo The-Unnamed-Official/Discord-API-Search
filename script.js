@@ -1,6 +1,6 @@
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
-const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
+const API_BASE = 'https://-discord-api-search.bbrraaggee.workers.dev/';
 const cache = new Map();
 let currentReqToken = 0;
 
