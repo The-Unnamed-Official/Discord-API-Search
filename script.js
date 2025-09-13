@@ -1,3 +1,19 @@
+// Show Help & Tips when info icon is clicked
+document.addEventListener('DOMContentLoaded', function() {
+  var infoFab = document.getElementById('infoFab');
+  var infoCard = document.getElementById('infoCard');
+  if (infoFab && infoCard) {
+    infoFab.addEventListener('click', function() {
+      if (infoCard.classList.contains('visible')) {
+        infoCard.classList.remove('visible');
+        setTimeout(function(){ infoCard.style.display = 'none'; }, 450);
+      } else {
+        infoCard.style.display = 'block';
+        setTimeout(function(){ infoCard.classList.add('visible'); }, 10);
+      }
+    });
+  }
+});
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
@@ -29,7 +45,12 @@ const BADGES = [
 ];
 function renderBadges(flags=0) {
   const out = BADGES.filter(b => flags & b.flag)
-    .map(b => `<img class="badge-icon" src="${b.icon}" title="${escapeHTML(b.name)}" loading="lazy" draggable="false">`)
+    .map(b => `
+      <span class="badge-icon">
+        <img class="badge-img" src="${b.icon}" loading="lazy" draggable="false" alt="${escapeHTML(b.name)}">
+        <span class="badge-tooltip">${escapeHTML(b.name)}</span>
+      </span>
+    `)
     .join('');
   return out || '<span class="no-badges">No public badges</span>';
 }
