@@ -1,6 +1,6 @@
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
-const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev';
+const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const cache = new Map();
 let currentReqToken = 0;
 
@@ -14,9 +14,18 @@ function escapeHTML(s='') {
 
 /* ------------ Badges ------------ */
 const BADGES = [
-  { flag: 1 << 6, icon: 'https://cdn.discordapp.com/badge-icons/8a88d63823d8a71cd5e390baa45efa02.png', name: 'HypeSquad Bravery' },
-  { flag: 1 << 7, icon: 'https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png', name: 'HypeSquad Brilliance' },
-  { flag: 1 << 8, icon: 'https://cdn.discordapp.com/badge-icons/3aa41de486fa12454c3761e8e223442e.png', name: 'HypeSquad Balance' }
+  { flag: 1 << 0, icon: 'https://cdn.discordapp.com/badge-icons/5e74e9b61934fc1f67c65515d1f7e60d.png', name: 'Discord Employee' },
+  { flag: 1 << 1, icon: 'https://cdn.discordapp.com/badge-icons/3f9748e53446a137a052f3454e2de41e.png', name: 'Partnered Server Owner' },
+  { flag: 1 << 2, icon: 'https://cdn.discordapp.com/badge-icons/bf01d1073931f921909045f3a39fd264.png', name: 'HypeSquad Events Member' },
+  { flag: 1 << 3, icon: 'https://cdn.discordapp.com/badge-icons/2717692c7dca7289b35297368a940dd0.png', name: 'Bug Hunter Level 1' },
+  { flag: 1 << 6, icon: 'https://cdn.discordapp.com/badge-icons/8a88d63823d8a71cd5e390baa45efa02.png', name: 'House Bravery Member' },
+  { flag: 1 << 7, icon: 'https://cdn.discordapp.com/badge-icons/011940fd013da3f7fb926e4a1cd2e618.png', name: 'House Brilliance Member' },
+  { flag: 1 << 8, icon: 'https://cdn.discordapp.com/badge-icons/3aa41de486fa12454c3761e8e223442e.png', name: 'House Balance Member' },
+  { flag: 1 << 9, icon: 'https://cdn.discordapp.com/badge-icons/7060786766c9c840eb3019e725d2b358.png', name: 'Early Nitro Supporter' },
+  { flag: 1 << 14, icon: 'https://cdn.discordapp.com/badge-icons/848f79194d4be5ff5f81505cbd0ce1e6.png', name: 'Bug Hunter Level 2' },
+  { flag: 1 << 17, icon: 'https://cdn.discordapp.com/badge-icons/6df5892e0f35b051f8b61eace34f4967.png', name: 'Early Verified Bot Developer' },
+  { flag: 1 << 18, icon: 'https://cdn.discordapp.com/badge-icons/fee1624003e2fee35cb398e125dc479b.png', name: 'Moderator Programs Alumni' },
+  { flag: 1 << 22, icon: 'https://cdn.discordapp.com/badge-icons/6bdc42827a38498929a4920da12695d9.png', name: 'Active Developer' }
 ];
 function renderBadges(flags=0) {
   const out = BADGES.filter(b => flags & b.flag)
