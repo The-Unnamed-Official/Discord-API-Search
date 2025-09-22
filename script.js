@@ -24,7 +24,7 @@ const MODE_CONFIG = {
   user: {
     label: 'User ID',
     placeholder: 'Enter Discord user ID (snowflake)',
-    helper: 'Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID',
+    helper: 'Example: <code style="user-select: text;">80351110224678912</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
     empty: 'Enter an ID to fetch a public user profile.',
     emptyIcon: '🧪',
     validation: 'Enter a numeric Discord user ID (5–30 digits).',
@@ -33,7 +33,7 @@ const MODE_CONFIG = {
   guild: {
     label: 'Guild ID',
     placeholder: 'Enter Discord guild/server ID (snowflake)',
-    helper: 'Example: <code>290926798629997171</code> • Right‑click a server icon (Dev Mode) → Copy ID',
+    helper: 'Example: <code style="user-select: text;">1407008747557097514</code> &bull; Right&#8209;click a server icon (Dev Mode) &rarr; <u>Copy ID<br>Note: The bot <u>must</u> be in the server to fetch its info.',
     empty: 'Enter an ID to fetch a public server snapshot.',
     emptyIcon: '🏰',
     validation: 'Enter a numeric Discord guild ID (5–30 digits).',
@@ -51,7 +51,6 @@ const FEATURE_DESCRIPTIONS = {
   PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
   VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
 };
-
 /* ------------ Utilities ------------ */
 function snowflakeToDate(id) {
   try { return new Date(Number(((BigInt(id) >> 22n) + DISCORD_EPOCH))); } catch { return null; }
@@ -364,7 +363,6 @@ function wireGuildFeatureInteractions() {
     updateFeatureDetail(firstPill, false);
   }
 }
-
 /* ------------ Skeleton / States ------------ */
 function renderEmptyState(mode=currentMode) {
   const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
@@ -538,7 +536,6 @@ function updateModeUI(resetCard=false) {
     setCard(renderEmptyState(currentMode), 'empty', currentMode);
   }
 }
-
 function setMode(mode) {
   if (!mode || !MODE_CONFIG[mode] || mode === currentMode) return;
   currentMode = mode;
@@ -547,7 +544,6 @@ function setMode(mode) {
   updateModeUI(true);
   announceStatus(`Switched to ${MODE_CONFIG[mode].label} lookup`, 'ok');
 }
-
 modeButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => setMode(btn.dataset.mode));
   btn.addEventListener('keydown', e => {
