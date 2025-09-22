@@ -12,7 +12,7 @@ const MODE_CONFIG = {
   user: {
     label: 'User ID',
     placeholder: 'Enter Discord user ID (snowflake)',
-    helper: 'Example: <code style="user-select: text;">80351110224678912</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
+    helper: 'Example: <code style="user-select: text;">611204110955446301</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
     empty: 'Enter an ID to fetch a public user profile.',
     emptyIcon: '🧪',
     validation: 'Enter a numeric Discord user ID (5–30 digits).',
