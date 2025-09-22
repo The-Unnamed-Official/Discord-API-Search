@@ -40,7 +40,11 @@
 ::selection { background:#5865f299; color:#fff; }
 html,body { margin:0; padding:0; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; overflow-x:hidden; min-height:100vh; }
 /* Hidden scrollbar mode */
-html.no-scrollbar, body.no-scrollbar { overflow:hidden !important; }
+html.no-scrollbar, body.no-scrollbar {
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-width:none;
+}
 /* Hide native scrollbars (WebKit/Blink) */
 html.no-scrollbar::-webkit-scrollbar, body.no-scrollbar::-webkit-scrollbar { width:0; height:0; }
 
