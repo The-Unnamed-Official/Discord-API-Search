@@ -5,6 +5,7 @@ const cache = new Map();
 let currentReqToken = 0;
 let cardTransitionHandler = null;
 let cardTransitionTimer = null;
+let cardTransitionResolve = null;
 let infoCardHideTimer = null;
 
 const MODE_CONFIG = {
@@ -469,74 +470,79 @@ function skeletonCard() {
 
 function setCard(html, cls='', mode=currentMode) {
   const card = document.getElementById('resultCard');
-  if (!card) return;
-
-  const classes = ['panel','panel--glass','result-card'];
-  if (cls) classes.push(cls);
-  if (mode) classes.push(`result-card--${mode}`);
-
-  const applyContent = () => {
-    card.innerHTML = html;
-    card.className = classes.join(' ');
-    card.dataset.ready = '1';
-    requestAnimationFrame(() => {
-      card.classList.add('is-visible');
-    });
-  };
-
-  const reduceMotion = document.documentElement.classList.contains('reduced-anim');
-
-  if (!card.dataset.ready || reduceMotion) {
-    if (cardTransitionHandler) {
-      card.removeEventListener('transitionend', cardTransitionHandler);
-      cardTransitionHandler = null;
-    }
-    if (cardTransitionTimer) {
-      clearTimeout(cardTransitionTimer);
-      cardTransitionTimer = null;
-    }
-    applyContent();
-    return;
+  if (cardTransitionResolve) {
+    cardTransitionResolve();
   }
 
-  card.classList.remove('is-visible');
+  if (!card) return Promise.resolve();
 
-  if (cardTransitionHandler) {
-    card.removeEventListener('transitionend', cardTransitionHandler);
-    cardTransitionHandler = null;
-  }
-  if (cardTransitionTimer) {
-    clearTimeout(cardTransitionTimer);
-    cardTransitionTimer = null;
-  }
+  return new Promise(resolve => {
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      cardTransitionResolve = null;
+      resolve();
+    };
 
-  cardTransitionHandler = event => {
-    if (event.target !== card) return;
-    card.removeEventListener('transitionend', cardTransitionHandler);
-    cardTransitionHandler = null;
-    if (cardTransitionTimer) {
-      clearTimeout(cardTransitionTimer);
-      cardTransitionTimer = null;
+    const classes = ['panel','panel--glass','result-card'];
+    if (cls) classes.push(cls);
+    if (mode) classes.push(`result-card--${mode}`);
+
+    cardTransitionResolve = finish;
+
+    const applyContent = () => {
+      card.innerHTML = html;
+      card.className = classes.join(' ');
+      card.dataset.ready = '1';
+      requestAnimationFrame(() => {
+        card.classList.add('is-visible');
+      });
+      finish();
+    };
+
+    const clearTransitionHooks = () => {
+      if (cardTransitionHandler) {
+        card.removeEventListener('transitionend', cardTransitionHandler);
+        cardTransitionHandler = null;
+      }
+      if (cardTransitionTimer) {
+        clearTimeout(cardTransitionTimer);
+        cardTransitionTimer = null;
+      }
+    };
+
+    const reduceMotion = document.documentElement.classList.contains('reduced-anim');
+
+    if (!card.dataset.ready || reduceMotion) {
+      clearTransitionHooks();
+      applyContent();
+      return;
     }
-    applyContent();
-  };
 
-  card.addEventListener('transitionend', cardTransitionHandler);
+    card.classList.remove('is-visible');
+    clearTransitionHooks();
 
-  cardTransitionTimer = setTimeout(() => {
-    if (cardTransitionHandler) {
-      card.removeEventListener('transitionend', cardTransitionHandler);
-      cardTransitionHandler = null;
-    }
-    applyContent();
-  }, 260);
+    cardTransitionHandler = event => {
+      if (event.target !== card) return;
+      clearTransitionHooks();
+      applyContent();
+    };
+
+    card.addEventListener('transitionend', cardTransitionHandler);
+
+    cardTransitionTimer = setTimeout(() => {
+      clearTransitionHooks();
+      applyContent();
+    }, 260);
+  });
 }
 
 function showLoading(mode=currentMode) {
-  setCard(skeletonCard(), 'loading-state', mode);
+  return setCard(skeletonCard(), 'loading-state', mode);
 }
 
-function showError(msg, detail='', mode=currentMode, opts={}) {
+async function showError(msg, detail='', mode=currentMode, opts={}) {
   const allowHTML = Boolean(opts.allowHTML);
   let extra = '';
   if (detail) {
@@ -544,7 +550,7 @@ function showError(msg, detail='', mode=currentMode, opts={}) {
     extra = `\n<details class="err-details" open>\n  <summary><span class="err-icon" aria-hidden="true">!</span><span>Details</span><span class="chevron" aria-hidden="true"></span></summary>\n  <div class="collapsible-body">\n    <pre class="err-pre">${safe}</pre>\n  </div>\n</details>`;
   }
   const message = allowHTML ? msg : escapeHTML(msg);
-  setCard(`<div class="error">${message}${extra}</div>`, 'error-state', mode);
+  await setCard(`<div class="error">${message}${extra}</div>`, 'error-state', mode);
   // Apply same animation enhancement to error details
   const d = document.querySelector('#resultCard .err-details');
   if (d) {
@@ -736,19 +742,19 @@ if (form && input) {
     const id = input.value.trim();
     const mode = currentMode;
     const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
-    if (!/^\d{5,30}$/.test(id)) { showError(config.validation, '', mode); shakeScreen(); return; }
+    if (!/^\d{5,30}$/.test(id)) { await showError(config.validation, '', mode); shakeScreen(); return; }
 
     if (abortController) abortController.abort();
     abortController = new AbortController();
     const reqToken = ++currentReqToken;
-    showLoading(mode);
+    await showLoading(mode);
     try {
       const data = mode === 'guild'
         ? await fetchDiscordGuild(id, abortController.signal)
         : await fetchDiscordUser(id, abortController.signal);
       if (reqToken !== currentReqToken || mode !== currentMode) return;
       const renderer = mode === 'guild' ? renderGuildCard : renderUserCard;
-      setCard(renderer(data), '', mode);
+      await setCard(renderer(data), '', mode);
       wireMediaHover();
       if (mode === 'guild') wireGuildFeatureInteractions();
       wireCopyableMeta();
@@ -768,12 +774,12 @@ if (form && input) {
             }
           } catch {}
         }
-        showError(message, detail, mode, { allowHTML });
+        await showError(message, detail, mode, { allowHTML });
         shakeScreen();
       }
-      else if (err.status === 429) showError('Rate limited (429).', err.body||'', mode);
-      else if (err.status) showError(`HTTP ${err.status}`, err.body||'', mode);
-      else showError('Network error.', '', mode);
+      else if (err.status === 429) await showError('Rate limited (429).', err.body||'', mode);
+      else if (err.status) await showError(`HTTP ${err.status}`, err.body||'', mode);
+      else await showError('Network error.', '', mode);
     }
   });
 

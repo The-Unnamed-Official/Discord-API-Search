@@ -574,15 +574,37 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 .meta-item::after {
   content:"";
   position:absolute;
-  top:50%;
-  right:14px;
-  transform:translateY(-50%);
+  top:0;
+  left:50%;
+  margin-top:-10px;
+  transform:translate(-50%, -100%) scale(.9);
+  background:var(--accent, #5865f2);
+  color:#fff;
+  padding:4px 10px;
+  border-radius:999px;
   font-size:.7rem;
   letter-spacing:.4px;
   font-weight:600;
-  color:var(--accent, #5865f2);
+  white-space:nowrap;
+  box-shadow:0 12px 24px -16px var(--accent, #5865f2);
   opacity:0;
-  transition:opacity .18s ease;
+  pointer-events:none;
+  transition:opacity .18s ease, transform .18s ease;
+}
+.meta-item::before {
+  content:"";
+  position:absolute;
+  top:0;
+  left:50%;
+  margin-top:-4px;
+  width:10px;
+  height:10px;
+  background:var(--accent, #5865f2);
+  border-radius:2px;
+  transform:translate(-50%, -50%) rotate(45deg) scale(.85);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease, transform .18s ease;
 }
 .meta-item.copied {
   box-shadow:0 12px 26px -16px var(--accent, #5865f2);
@@ -590,6 +612,11 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 .meta-item.copied::after {
   content:"Copied!";
   opacity:1;
+  transform:translate(-50%, -100%) scale(1);
+}
+.meta-item.copied::before {
+  opacity:1;
+  transform:translate(-50%, -50%) rotate(45deg) scale(1);
 }
 .meta-item.copied .meta-value {
   color:#fff;
