@@ -3,7 +3,7 @@
 > First public **Beta** release. Core goal (look up a Discord user by ID and show public profile info) works end‑to‑end. Interface, proxy approach, and structure are **subject to change** while the project stabilizes.
 
 ## Overview
-A static GitHub Pages front‑end + a lightweight Cloudflare Worker proxy that fetches public Discord user data (`/users/{id}`) safely without exposing a bot token in the browser.
+A static GitHub Pages front‑end + a lightweight Cloudflare Worker proxy that fetches public Discord user and guild data (`/users/{id}`, `/guilds/{id}`) safely without exposing a bot token in the browser.
 
 ## Why a Proxy Now?
 Direct browser calls with a bot token were unreliable (CORS / security) and unsafe (token exposure). The Worker holds the secret token; the site calls the Worker’s `/api/users/<id>` endpoint. This keeps the repo public and the token private.
@@ -11,6 +11,7 @@ Direct browser calls with a bot token were unreliable (CORS / security) and unsa
 ## Features (Beta)
 - Discord‑inspired, animated UI with accessible reduced‑motion fallbacks.
 - User lookup by numeric snowflake ID.
+- Guild / server lookup by numeric snowflake ID with member counts, features, and metadata.
 - Avatar (static / animated) & banner (static / animated) preview with hover switching.
 - Derived account creation date from snowflake.
 - Public flag (badge) display (HypeSquad subset for now).
@@ -48,7 +49,7 @@ Discord REST API (https://discord.com/api/v10/users/{id})
 3. Set `API_BASE` in `script.js` to your Worker base (without trailing slash).
 4. Commit & push.
 5. In GitHub repo: Settings → Pages → Deploy from `main` (root).
-6. Visit `https://<username>.github.io/<repo>/` and test a user ID.
+6. Visit `https://<username>.github.io/<repo>/` and test a user or guild ID.
 
 ## Worker Example
 ```js
@@ -61,13 +62,20 @@ export default {
     if (url.pathname === '/api/ping') {
       return json({ ok: true, ts: Date.now() });
     }
-    const m = url.pathname.match(/^\/api\/users\/(\d{5,30})$/);
-    if (!m) return json({ error: 'Not found' }, 404);
+
+    const userMatch = url.pathname.match(/^\/api\/users\/(\d{5,30})$/);
+    const guildMatch = url.pathname.match(/^\/api\/guilds\/(\d{5,30})$/);
+    if (!userMatch && !guildMatch) {
+      return json({ error: 'Not found' }, 404);
+    }
 
     if (!env.BOT_TOKEN) return json({ error: 'Server missing BOT_TOKEN' }, 500);
-    const id = m[1];
+
+    const id = (userMatch || guildMatch)[1];
+    const route = userMatch ? `users/${id}` : `guilds/${id}`;
+    const query = guildMatch ? '?with_counts=true' : '';
     try {
-      const upstream = await fetch(`https://discord.com/api/v10/users/${id}`, {
+      const upstream = await fetch(`https://discord.com/api/v10/${route}${query}`, {
         headers: { Authorization: `Bot ${env.BOT_TOKEN}` }
       });
       const text = await upstream.text();
@@ -104,6 +112,9 @@ function json(obj, status = 200) {
 | 429  | Rate limited | Pause & retry later |
 | 5xx  | Upstream / proxy issue | Retry; check Worker logs |
 | Other | Generic HTTP code | Inspect details panel / console |
+
+## Troubleshooting
+- **Guild lookups require bot membership.** If a server search returns `Unknown Guild (10004)` or guidance to invite the worker bot, make sure the Worker’s bot account is actually a member of that guild before retrying the lookup.
 
 ## Security Notes
 - Bot token never shipped to clients; only the Worker sees it.

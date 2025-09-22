@@ -1,31 +1,122 @@
-// Show Help & Tips when info icon is clicked
-document.addEventListener('DOMContentLoaded', function() {
-  var infoFab = document.getElementById('infoFab');
-  var infoCard = document.getElementById('infoCard');
-  if (infoFab && infoCard) {
-    infoFab.addEventListener('click', function() {
-      if (infoCard.classList.contains('visible')) {
-        infoCard.classList.remove('visible');
-        setTimeout(function(){ infoCard.style.display = 'none'; }, 450);
-      } else {
-        infoCard.style.display = 'block';
-        setTimeout(function(){ infoCard.classList.add('visible'); }, 10);
-      }
-    });
-  }
-});
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const cache = new Map();
 let currentReqToken = 0;
+let cardTransitionHandler = null;
+let cardTransitionTimer = null;
+let cardTransitionResolve = null;
+let infoCardHideTimer = null;
 
+const MODE_CONFIG = {
+  user: {
+    label: 'User ID',
+    placeholder: 'Enter Discord user ID (snowflake)',
+    helper: 'Example: <code style="user-select: text;">611204110955446301</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
+    empty: 'Enter an ID to fetch a public user profile.',
+    emptyIcon: '🧪',
+    validation: 'Enter a numeric Discord user ID (5–30 digits).',
+    notFound: 'User not found (404).'
+  },
+  guild: {
+    label: 'Guild ID',
+    placeholder: 'Enter Discord guild/server ID (snowflake)',
+    helper: 'Example: <code style="user-select: text;">1407008747557097514</code> &bull; Right&#8209;click a server icon (Dev Mode) &rarr; <u>Copy ID<br>Note: The bot <u>must</u> be in the server to fetch its info.',
+    empty: 'Enter an ID to fetch a public server snapshot.',
+    emptyIcon: '🏰',
+    validation: 'Enter a numeric Discord guild ID (5–30 digits).',
+    notFound: 'Guild not found (404).'
+  }
+};
+
+let currentMode = 'user';
+
+const FEATURE_DESCRIPTIONS = {
+  COMMUNITY: 'Community servers unlock welcome screens, server insights, and membership screening tools.',
+  DISCOVERABLE: 'Eligible for Discord’s Server Discovery directory so people can find it organically.',
+  HUB: 'Part of the Student Hubs program that connects school communities.',
+  NEWS: 'Announcement channels can publish updates that followers receive in their own servers.',
+  PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
+  VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
+};
 /* ------------ Utilities ------------ */
 function snowflakeToDate(id) {
   try { return new Date(Number(((BigInt(id) >> 22n) + DISCORD_EPOCH))); } catch { return null; }
 }
 function escapeHTML(s='') {
   return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function escapeMultiline(str='') {
+  return escapeHTML(str).replace(/\n+/g, '<br>');
+}
+
+function normalizeColor(value) {
+  if (!value && value !== 0) return '';
+  if (typeof value === 'number') {
+    return '#' + value.toString(16).padStart(6, '0');
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return trimmed.startsWith('#') ? trimmed : ('#' + trimmed.replace(/^#/, ''));
+  }
+  return '';
+}
+
+function formatNumber(value) {
+  if (value == null || Number.isNaN(value)) return '—';
+  try { return Number(value).toLocaleString(); } catch { return String(value); }
+}
+
+function formatVerificationLevel(level) {
+  const map = ['None','Low','Medium','High','Very High'];
+  return map[level] ?? 'Unknown';
+}
+
+function formatBoostTier(tier) {
+  if (tier == null) return '—';
+  if (tier === 0) return 'None';
+  return `Level ${tier}`;
+}
+
+function formatNSFWLevel(level) {
+  const map = ['Default','Explicit','Safe','Age-Restricted'];
+  return map[level] ?? 'Unknown';
+}
+
+function formatLocale(locale) {
+  if (!locale) return '—';
+  try {
+    const display = new Intl.DisplayNames(undefined, { type:'language' });
+    const normalized = locale.replace('_','-');
+    const label = display.of(normalized.toLowerCase());
+    return label ? `${label} (${normalized})` : normalized;
+  } catch {
+    return locale.replace('_','-');
+  }
+}
+
+function formatFeatureName(feature='') {
+  return feature
+    .toLowerCase()
+    .split('_')
+    .map(word => word ? word.charAt(0).toUpperCase() + word.slice(1) : '')
+    .join(' ');
+}
+
+function fallbackGuildGradient(id='') {
+  const palettes = [
+    ['#3b4b6b','#1f242f','#5865f2'],
+    ['#2c3448','#1a1f2b','#8b5cf6'],
+    ['#31424d','#1c242a','#43b581'],
+    ['#3a2f54','#201c32','#ff73fa'],
+    ['#2f3d4f','#1b222c','#00b5d8']
+  ];
+  let idx = 0;
+  try { idx = Number(BigInt(id) % BigInt(palettes.length)); } catch {}
+  const [a,b,c] = palettes[idx];
+  return `linear-gradient(145deg,${a},${b} 55%,${c})`;
 }
 
 /* ------------ Badges ------------ */
@@ -77,22 +168,99 @@ function getBanner(user) {
   return { static:accent, gif:'' };
 }
 
+function getGuildIcon(guild) {
+  if (guild.icon) {
+    const animated = guild.icon.startsWith('a_');
+    const base = `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}`;
+    return { static:`${base}.webp?size=256`, gif: animated ? `${base}.gif?size=256` : '', fallback:false };
+  }
+  const letter = (guild.name || '?').trim()[0]?.toUpperCase() || '#';
+  return { fallback:true, letter, background:fallbackGuildGradient(guild.id) };
+}
+
+function getGuildBanner(guild) {
+  if (guild.banner) {
+    const anim = guild.banner.startsWith('a_');
+    const base = `https://cdn.discordapp.com/banners/${guild.id}/${guild.banner}`;
+    return { static:`${base}.webp?size=480`, gif: anim ? `${base}.gif?size=480` : '' };
+  }
+  const splash = guild.discovery_splash || guild.splash;
+  if (splash) {
+    const path = guild.discovery_splash ? 'discovery-splashes' : 'splashes';
+    const base = `https://cdn.discordapp.com/${path}/${guild.id}/${splash}`;
+    return { static:`${base}.webp?size=640`, gif:'' };
+  }
+  const color = normalizeColor(guild.banner_color);
+  if (color) {
+    return { static:color, gif:'' };
+  }
+  return { static:fallbackGuildGradient(guild.id), gif:'' };
+}
+
+function buildBannerStyle(staticResource='') {
+  if (!staticResource) return '';
+  if (staticResource.startsWith('#') || staticResource.startsWith('linear')) {
+    return `background:${staticResource}`;
+  }
+  return `background-image:url('${staticResource}')`;
+}
+
+function applyBackgroundFromResource(el, resource) {
+  if (!el || !resource) return;
+  if (resource.startsWith('#')) {
+    el.style.background = resource;
+    el.style.backgroundImage = '';
+  } else if (resource.startsWith('linear')) {
+    el.style.backgroundImage = resource;
+  } else {
+    el.style.backgroundImage = `url('${resource}')`;
+  }
+}
+
+async function copyTextToClipboard(text) {
+  if (!text) return false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (_) {
+      ok = false;
+    } finally {
+      ta.remove();
+    }
+    return ok;
+  } catch (_) {}
+  return false;
+}
+
 /* ------------ Rendering ------------ */
 function renderUserCard(user) {
   const avatar = getAvatar(user);
   const banner = getBanner(user);
   const created = snowflakeToDate(user.id);
   const createdStr = created ? created.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '';
-  const bannerStyle = banner.static.startsWith('#')
-    ? `background:${banner.static}`
-    : `background-image:url('${banner.static}')`;
+  const bannerStyle = buildBannerStyle(banner.static);
 
   return `
     <div class="banner" id="banner"
       style="${bannerStyle}"
       ${banner.gif ? `data-static="${banner.static}" data-gif="${banner.gif}"`:''}></div>
     <div class="avatar-wrapper">
-    <img class="avatar intro" id="avatar" src="${avatar.static}" data-static="${avatar.static}"
+    <img class="avatar intro" id="avatar" src="${avatar.static}" data-static="${avatar.static}" data-anim-avatar="true"
         ${avatar.gif ? `data-gif="${avatar.gif}"`:''} alt="Avatar of ${escapeHTML(user.username)}" draggable="false">
     </div>
     <div class="username">${escapeHTML(user.username)}</div>
@@ -102,7 +270,153 @@ function renderUserCard(user) {
   `;
 }
 
+function renderGuildFeaturePill(feature='') {
+  const name = formatFeatureName(feature);
+  const description = FEATURE_DESCRIPTIONS[feature] || `Discord flag: ${name}.`;
+  const safeName = escapeHTML(name);
+  const safeFeature = escapeHTML(feature);
+  const safeDescription = escapeHTML(description);
+  return `<button type="button" class="feature-pill" data-feature="${safeFeature}" data-feature-label="${safeName}" data-feature-description="${safeDescription}" aria-pressed="false"><span class="feature-dot" aria-hidden="true"></span><span class="feature-label">${safeName}</span></button>`;
+}
+
+function renderGuildCard(guild) {
+  const icon = getGuildIcon(guild);
+  const banner = getGuildBanner(guild);
+  const created = snowflakeToDate(guild.id);
+  const createdStr = created ? created.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '';
+  const bannerStyle = buildBannerStyle(banner.static);
+  const features = Array.isArray(guild.features) ? guild.features : [];
+  const featurePills = features.map(f => renderGuildFeaturePill(f)).join('');
+  const hasFeatures = Boolean(featurePills);
+  const featureDetailDefault = 'Select a feature badge to learn what Discord enables for this server.';
+  const featureHint = hasFeatures
+    ? 'Flags provided by Discord — tap or click a badge to learn more.'
+    : 'Flags provided by Discord when available.';
+  const featureMarkup = `
+    <div class="feature-section">
+      <div class="feature-header">
+        <span class="feature-title">Public features</span>
+        <span class="feature-hint">${escapeHTML(featureHint)}</span>
+      </div>
+      ${featurePills
+        ? `<div class="guild-features">${featurePills}</div><div class="feature-detail" data-feature-detail>${escapeHTML(featureDetailDefault)}</div>`
+        : '<div class="no-features">No public guild features detected</div>'}
+    </div>
+  `;
+  const counts = [];
+  if (guild.approximate_member_count != null) counts.push({ label:'Members', value: formatNumber(guild.approximate_member_count) });
+  if (guild.approximate_presence_count != null) counts.push({ label:'Online', value: formatNumber(guild.approximate_presence_count) });
+  if (guild.premium_subscription_count != null) counts.push({ label:'Boosts', value: formatNumber(guild.premium_subscription_count) });
+  const countsMarkup = counts.length
+    ? `<div class="guild-counts">${counts.map(c => `<div class="count-box"><span class="count-label">${escapeHTML(c.label)}</span><span class="count-value">${escapeHTML(c.value)}</span></div>`).join('')}</div>`
+    : '';
+  const metaItems = [
+    { label:'Owner ID', html: guild.owner_id ? `<code>${escapeHTML(guild.owner_id)}</code>` : '—', copy:guild.owner_id || '' },
+    { label:'Preferred Locale', text: formatLocale(guild.preferred_locale), copy:guild.preferred_locale ? guild.preferred_locale.replace('_','-') : '' },
+    { label:'Verification Level', text: formatVerificationLevel(guild.verification_level), copy: formatVerificationLevel(guild.verification_level) },
+    { label:'2FA Requirement', text: guild.mfa_level === 1 ? 'Required' : 'Not required', copy: guild.mfa_level === 1 ? 'Required' : 'Not required' },
+    { label:'Boost Tier', text: formatBoostTier(guild.premium_tier), copy: formatBoostTier(guild.premium_tier) },
+    { label:'NSFW Level', text: formatNSFWLevel(guild.nsfw_level), copy: formatNSFWLevel(guild.nsfw_level) },
+    { label:'Vanity URL', text: guild.vanity_url_code ? `discord.gg/${guild.vanity_url_code}` : '—', copy: guild.vanity_url_code ? `discord.gg/${guild.vanity_url_code}` : '' }
+  ];
+  const metaMarkup = `<div class="meta-grid">${metaItems.map(item => {
+    const value = item.html != null ? item.html : escapeHTML(item.text ?? '—');
+    const copyValue = item.copy ? escapeHTML(item.copy) : '';
+    const copyAttr = copyValue ? ` data-copy="${copyValue}"` : '';
+    const labelAttr = item.label ? ` data-copy-label="${escapeHTML(item.label)}"` : '';
+    const classes = ['meta-item'];
+    if (copyValue) classes.push('meta-item--copyable');
+    return `<button type="button" class="${classes.join(' ')}"${copyAttr}${labelAttr}><span class="meta-label">${escapeHTML(item.label)}</span><span class="meta-value">${value}</span></button>`;
+  }).join('')}</div>`;
+
+  const description = guild.description ? `<div class="guild-description">${escapeMultiline(guild.description)}</div>` : '';
+  const avatarMarkup = icon.fallback
+    ? `<div class="avatar avatar--placeholder" id="avatar" style="background:${escapeHTML(icon.background)}" data-anim-avatar="true" role="img" aria-label="Placeholder icon for ${escapeHTML(guild.name || 'guild')}">${escapeHTML(icon.letter)}</div>`
+    : `<img class="avatar intro" id="avatar" src="${icon.static}" data-static="${icon.static}" data-anim-avatar="true" ${icon.gif ? `data-gif="${icon.gif}"`:''} alt="Icon of ${escapeHTML(guild.name)}" draggable="false">`;
+
+  return `
+    <div class="banner" id="banner"
+      style="${bannerStyle}"
+      data-static="${escapeHTML(banner.static)}"
+      ${banner.gif ? `data-gif="${banner.gif}"`:''}></div>
+    <div class="avatar-wrapper">
+      ${avatarMarkup}
+    </div>
+    <div class="username">${escapeHTML(guild.name || 'Unknown Guild')}</div>
+    <div class="created">Created: ${createdStr}</div>
+    <div class="id">ID: ${guild.id}</div>
+    <div class="guild-meta">
+      ${description}
+      ${metaMarkup}
+      ${countsMarkup}
+      ${featureMarkup}
+    </div>
+  `;
+}
+
+function updateFeatureDetail(button, announce=true) {
+  if (!button) return;
+  const section = button.closest('.feature-section');
+  if (!section) return;
+  const detail = section.querySelector('.feature-detail');
+  if (!detail) return;
+  const pills = Array.from(section.querySelectorAll('.feature-pill'));
+  pills.forEach(pill => {
+    const isActive = pill === button;
+    pill.classList.toggle('is-active', isActive);
+    pill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+  const label = button.dataset.featureLabel || button.textContent.trim();
+  const description = button.dataset.featureDescription || '';
+  const safeLabel = escapeHTML(label);
+  const safeDescription = escapeMultiline(description || 'No description available.');
+  detail.innerHTML = `<strong>${safeLabel}</strong><span>${safeDescription}</span>`;
+  if (announce) announceStatus(`${label} feature details shown`, 'info');
+}
+
+function wireGuildFeatureInteractions() {
+  const sections = document.querySelectorAll('#resultCard .feature-section');
+  sections.forEach(section => {
+    const pills = Array.from(section.querySelectorAll('.feature-pill'));
+    if (!pills.length) return;
+    pills.forEach((pill, index) => {
+      if (pill.dataset.bound === '1') return;
+      pill.dataset.bound = '1';
+      pill.addEventListener('click', () => updateFeatureDetail(pill));
+      pill.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          updateFeatureDetail(pill);
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const target = pills[(index + dir + pills.length) % pills.length];
+          target.focus();
+          updateFeatureDetail(target);
+        }
+      });
+    });
+  });
+
+  const firstPill = document.querySelector('#resultCard .feature-section .feature-pill');
+  if (firstPill) {
+    updateFeatureDetail(firstPill, false);
+  }
+}
+
 /* ------------ Skeleton / States ------------ */
+function renderEmptyState(mode=currentMode) {
+  const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
+  const icon = config.emptyIcon || '🔍';
+  const msg = config.empty || 'Enter an ID to fetch data.';
+  return `
+    <div class="placeholder-msg">
+      <div class="placeholder-icon">${icon}</div>
+      <p>${escapeHTML(msg)}</p>
+    </div>
+  `;
+}
+
 function skeletonCard() {
   return `
     <div class="skeleton">
@@ -122,25 +436,91 @@ function skeletonCard() {
   `;
 }
 
-function setCard(html, cls='') {
-  const card = document.getElementById('userCard');
-  card.className = `panel panel--glass user-card ${cls}`.trim();
-  card.innerHTML = html;
+function setCard(html, cls='', mode=currentMode) {
+  const card = document.getElementById('resultCard');
+  if (cardTransitionResolve) {
+    cardTransitionResolve();
+  }
+
+  if (!card) return Promise.resolve();
+
+  return new Promise(resolve => {
+    let resolved = false;
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      cardTransitionResolve = null;
+      resolve();
+    };
+
+    const classes = ['panel','panel--glass','result-card'];
+    if (cls) classes.push(cls);
+    if (mode) classes.push(`result-card--${mode}`);
+
+    cardTransitionResolve = finish;
+
+    const applyContent = () => {
+      card.innerHTML = html;
+      card.className = classes.join(' ');
+      card.dataset.ready = '1';
+      requestAnimationFrame(() => {
+        card.classList.add('is-visible');
+      });
+      finish();
+    };
+
+    const clearTransitionHooks = () => {
+      if (cardTransitionHandler) {
+        card.removeEventListener('transitionend', cardTransitionHandler);
+        cardTransitionHandler = null;
+      }
+      if (cardTransitionTimer) {
+        clearTimeout(cardTransitionTimer);
+        cardTransitionTimer = null;
+      }
+    };
+
+    const reduceMotion = document.documentElement.classList.contains('reduced-anim');
+
+    if (!card.dataset.ready || reduceMotion) {
+      clearTransitionHooks();
+      applyContent();
+      return;
+    }
+
+    card.classList.remove('is-visible');
+    clearTransitionHooks();
+
+    cardTransitionHandler = event => {
+      if (event.target !== card) return;
+      clearTransitionHooks();
+      applyContent();
+    };
+
+    card.addEventListener('transitionend', cardTransitionHandler);
+
+    cardTransitionTimer = setTimeout(() => {
+      clearTransitionHooks();
+      applyContent();
+    }, 260);
+  });
 }
 
-function showLoading() {
-  setCard(skeletonCard(), 'loading-state');
+function showLoading(mode=currentMode) {
+  return setCard(skeletonCard(), 'loading-state', mode);
 }
 
-function showError(msg, detail='') {
+async function showError(msg, detail='', mode=currentMode, opts={}) {
+  const allowHTML = Boolean(opts.allowHTML);
   let extra = '';
   if (detail) {
     const safe = escapeHTML(detail); // full text; scrolling handled via CSS
     extra = `\n<details class="err-details" open>\n  <summary><span class="err-icon" aria-hidden="true">!</span><span>Details</span><span class="chevron" aria-hidden="true"></span></summary>\n  <div class="collapsible-body">\n    <pre class="err-pre">${safe}</pre>\n  </div>\n</details>`;
   }
-  setCard(`<div class="error">${escapeHTML(msg)}${extra}</div>`);
+  const message = allowHTML ? msg : escapeHTML(msg);
+  await setCard(`<div class="error">${message}${extra}</div>`, 'error-state', mode);
   // Apply same animation enhancement to error details
-  const d = document.querySelector('#userCard .err-details');
+  const d = document.querySelector('#resultCard .err-details');
   if (d) {
     const summary = d.querySelector('summary');
     const body = d.querySelector('.collapsible-body');
@@ -163,44 +543,86 @@ function shakeScreen() {
 }
 
 function wireMediaHover() {
-  const a = document.getElementById('avatar');
-  if (a && a.dataset.gif) {
-    a.addEventListener('mouseenter', () => a.src = a.dataset.gif);
-    a.addEventListener('mouseleave', () => a.src = a.dataset.static);
-  }
-  // Click spin + bounce animation
-  if (a) {
-    // Avoid stacking listeners if re-rendered
-    if (!a.dataset.clickAnimBound) {
-      a.addEventListener('click', () => {
-        if (a.classList.contains('spin-bounce')) return; // already animating
-        a.classList.add('spin-bounce');
-      });
-      a.addEventListener('animationend', (ev) => {
-        if (ev.animationName === 'avatarSpin') {
-          a.classList.remove('spin-bounce');
-        }
-        if (ev.animationName === 'avatarIn') {
-          a.classList.remove('intro'); // ensure intro animation does not replay
-        }
-      }, { passive:true });
-      a.dataset.clickAnimBound = '1';
+  document.querySelectorAll('#resultCard [data-gif]').forEach(el => {
+    if (el.dataset.gifBound) return;
+    if (el.tagName === 'IMG') {
+      el.addEventListener('mouseenter', () => { el.src = el.dataset.gif; });
+      el.addEventListener('mouseleave', () => { el.src = el.dataset.static; });
+    } else {
+      el.addEventListener('mouseenter', () => { el.style.backgroundImage = `url('${el.dataset.gif}')`; });
+      el.addEventListener('mouseleave', () => applyBackgroundFromResource(el, el.dataset.static));
     }
-  }
-  const b = document.getElementById('banner');
-  if (b && b.dataset.gif) {
-    b.addEventListener('mouseenter', () => {
-      b.style.backgroundImage = `url('${b.dataset.gif}')`;
+    el.dataset.gifBound = '1';
+  });
+
+  document.querySelectorAll('#resultCard [data-anim-avatar]').forEach(el => {
+    if (el.dataset.clickAnimBound) return;
+    el.addEventListener('click', () => {
+      if (el.classList.contains('spin-bounce')) return;
+      el.classList.add('spin-bounce');
     });
-    b.addEventListener('mouseleave', () => {
-      b.style.backgroundImage = `url('${b.dataset.static}')`;
-    });
+    el.addEventListener('animationend', ev => {
+      if (ev.animationName === 'avatarSpin') {
+        el.classList.remove('spin-bounce');
+      }
+      if (ev.animationName === 'avatarIn') {
+        el.classList.remove('intro');
+      }
+    }, { passive:true });
+    el.dataset.clickAnimBound = '1';
+  });
+
+  const banner = document.querySelector('#resultCard #banner');
+  if (banner && banner.dataset.static && !banner.dataset.staticBound) {
+    banner.addEventListener('mouseleave', () => applyBackgroundFromResource(banner, banner.dataset.static));
+    banner.dataset.staticBound = '1';
   }
+}
+
+function applyCopyFeedback(el) {
+  if (!el) return;
+  el.classList.add('copied');
+  if (el.dataset.copyTimer) {
+    clearTimeout(Number(el.dataset.copyTimer));
+  }
+  const timer = setTimeout(() => {
+    el.classList.remove('copied');
+    delete el.dataset.copyTimer;
+  }, 1400);
+  el.dataset.copyTimer = String(timer);
+}
+
+function wireCopyableMeta() {
+  const items = document.querySelectorAll('#resultCard .meta-item[data-copy]');
+  items.forEach(item => {
+    if (item.dataset.copyBound === '1') return;
+    item.dataset.copyBound = '1';
+    const handle = async () => {
+      const text = item.dataset.copy;
+      if (!text) return;
+      const label = item.dataset.copyLabel || 'Value';
+      const ok = await copyTextToClipboard(text);
+      if (ok) {
+        applyCopyFeedback(item);
+        announceStatus(`Copied ${label}: ${text}`, 'ok');
+      } else {
+        announceStatus(`Unable to copy ${label}.`, 'warn');
+      }
+    };
+    item.addEventListener('click', () => { handle(); });
+    item.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handle();
+      }
+    });
+  });
 }
 
 /* ------------ Fetch ------------ */
 async function fetchDiscordUser(userId, signal) {
-  if (cache.has(userId)) return cache.get(userId);
+  const key = `user:${userId}`;
+  if (cache.has(key)) return cache.get(key);
   const res = await fetch(`${API_BASE}/users/${userId}`, { signal });
   const raw = await res.text();
   let json = null;
@@ -211,51 +633,139 @@ async function fetchDiscordUser(userId, signal) {
     err.body = raw;
     throw err;
   }
-  cache.set(userId, json);
+  cache.set(key, json);
+  return json;
+}
+
+async function fetchDiscordGuild(guildId, signal) {
+  const key = `guild:${guildId}`;
+  if (cache.has(key)) return cache.get(key);
+  const res = await fetch(`${API_BASE}/guilds/${guildId}?with_counts=true`, { signal });
+  const raw = await res.text();
+  let json = null;
+  try { json = raw ? JSON.parse(raw) : null; } catch {}
+  if (!res.ok) {
+    const err = new Error('HTTP '+res.status);
+    err.status = res.status;
+    err.body = raw;
+    throw err;
+  }
+  cache.set(key, json);
   return json;
 }
 
 /* ------------ DOM Wiring ------------ */
 const form = document.getElementById('searchForm');
-const input = document.getElementById('userId');
+const input = document.getElementById('searchId');
+const helperLine = document.getElementById('lookupHelper');
+const modeButtons = Array.from(document.querySelectorAll('.mode-btn'));
 let abortController = null;
 
-form.addEventListener('submit', async e => {
-  e.preventDefault();
-  const id = input.value.trim();
-  if (!/^\d{5,30}$/.test(id)) { showError('Enter a numeric Discord user ID (5–30 digits).'); shakeScreen(); return; }
-
-  if (abortController) abortController.abort();
-  abortController = new AbortController();
-  const reqToken = ++currentReqToken;
-  showLoading();
-  try {
-    const user = await fetchDiscordUser(id, abortController.signal);
-    if (reqToken !== currentReqToken) return;
-    setCard(renderUserCard(user));
-    wireMediaHover();
-  } catch (err) {
-    if (err.name === 'AbortError') return;
-  if (err.status === 404) { showError('User not found (404).', err.body||''); shakeScreen(); }
-    else if (err.status === 429) showError('Rate limited (429).', err.body||'');
-    else if (err.status) showError(`HTTP ${err.status}`, err.body||'');
-    else showError('Network error.');
+function updateModeUI(resetCard=false) {
+  const config = MODE_CONFIG[currentMode] || MODE_CONFIG.user;
+  modeButtons.forEach(btn => {
+    const isActive = btn.dataset.mode === currentMode;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+  if (input) {
+    input.placeholder = config.placeholder;
+    input.setAttribute('aria-label', config.label);
   }
+  if (helperLine) helperLine.innerHTML = config.helper;
+  if (resetCard) {
+    setCard(renderEmptyState(currentMode), 'empty', currentMode);
+  }
+}
+
+function setMode(mode) {
+  if (!mode || !MODE_CONFIG[mode] || mode === currentMode) return;
+  currentMode = mode;
+  if (abortController) { abortController.abort(); abortController = null; }
+  if (input) { input.value = ''; input.focus(); }
+  updateModeUI(true);
+  announceStatus(`Switched to ${MODE_CONFIG[mode].label} lookup`, 'ok');
+}
+
+modeButtons.forEach((btn, idx) => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  btn.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const direction = e.key === 'ArrowRight' ? 1 : -1;
+      const target = (idx + direction + modeButtons.length) % modeButtons.length;
+      const targetBtn = modeButtons[target];
+      targetBtn.focus();
+      setMode(targetBtn.dataset.mode);
+    }
+  });
 });
 
-/* Debounced auto-search */
-let debounceTimer;
-input.addEventListener('input', () => {
-  clearTimeout(debounceTimer);
-  if (input.value.trim().length < 15) return;
-  debounceTimer = setTimeout(()=> form.dispatchEvent(new Event('submit')), 650);
-});
+updateModeUI(true);
+
+if (form && input) {
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const id = input.value.trim();
+    const mode = currentMode;
+    const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
+    if (!/^\d{5,30}$/.test(id)) { await showError(config.validation, '', mode); shakeScreen(); return; }
+
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+    const reqToken = ++currentReqToken;
+    await showLoading(mode);
+    try {
+      const data = mode === 'guild'
+        ? await fetchDiscordGuild(id, abortController.signal)
+        : await fetchDiscordUser(id, abortController.signal);
+      if (reqToken !== currentReqToken || mode !== currentMode) return;
+      const renderer = mode === 'guild' ? renderGuildCard : renderUserCard;
+      await setCard(renderer(data), '', mode);
+      wireMediaHover();
+      if (mode === 'guild') wireGuildFeatureInteractions();
+      wireCopyableMeta();
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      if (reqToken !== currentReqToken || mode !== currentMode) return;
+      if (err.status === 404) {
+        let message = config.notFound;
+        let allowHTML = false;
+        const detail = err.body || '';
+        if (mode === 'guild' && detail) {
+          try {
+            const parsed = JSON.parse(detail);
+            if (parsed && parsed.code === 10004) {
+              message = `The bot isn’t in that server yet. Invite the worker bot before searching.<br><a class="err-link" href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener noreferrer">Invite the worker bot</a>`;
+              allowHTML = true;
+            }
+          } catch {}
+        }
+        await showError(message, detail, mode, { allowHTML });
+        shakeScreen();
+      }
+      else if (err.status === 429) await showError('Rate limited (429).', err.body||'', mode);
+      else if (err.status) await showError(`HTTP ${err.status}`, err.body||'', mode);
+      else await showError('Network error.', '', mode);
+    }
+  });
+
+  /* Debounced auto-search */
+  let debounceTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    if (input.value.trim().length < 15) return;
+    debounceTimer = setTimeout(()=> form.dispatchEvent(new Event('submit')), 650);
+  });
+}
 
 /* Progressive animated reveal for first paint */
 window.addEventListener('DOMContentLoaded', () => {
   // Stagger already handled via nth-of-type; can add manual delay if needed.
   initTheme();
   wireSettings();
+  wireInfoPanel();
   activateNoScrollbar();
   enhanceDetailsAnimation();
 });
@@ -372,6 +882,74 @@ function animateDetails(detailsEl, bodyEl, open) {
     // schedule height animation with attribute removal afterwards
   }
 }
+
+function wireInfoPanel() {
+  const infoFab = document.getElementById('infoFab');
+  const infoCard = document.getElementById('infoCard');
+  if (!infoFab || !infoCard) return;
+
+  const show = () => {
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.style.display = 'block';
+    infoCard.setAttribute('aria-hidden', 'false');
+    infoFab.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => {
+      infoCard.classList.add('visible');
+      infoCard.classList.remove('hiding');
+    });
+  };
+
+  const hide = () => {
+    if (!infoCard.classList.contains('visible')) return;
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.classList.remove('visible');
+    infoCard.setAttribute('aria-hidden', 'true');
+    infoFab.setAttribute('aria-expanded', 'false');
+    const reduced = document.documentElement.classList.contains('reduced-anim');
+    if (reduced) {
+      infoCard.classList.remove('hiding');
+      infoCard.style.display = 'none';
+      return;
+    }
+    infoCard.classList.add('hiding');
+    infoCardHideTimer = setTimeout(() => {
+      if (!infoCard.classList.contains('visible')) {
+        infoCard.style.display = 'none';
+        infoCard.classList.remove('hiding');
+      }
+      infoCardHideTimer = null;
+    }, 420);
+  };
+
+  infoFab.addEventListener('click', () => {
+    if (infoCard.classList.contains('visible')) hide(); else show();
+  });
+
+  infoFab.setAttribute('aria-controls', infoCard.id);
+  infoFab.setAttribute('aria-expanded', infoCard.classList.contains('visible') ? 'true' : 'false');
+  infoCard.setAttribute('aria-hidden', infoCard.classList.contains('visible') ? 'false' : 'true');
+
+  infoCard.addEventListener('transitionend', event => {
+    if (event.target !== infoCard || event.propertyName !== 'opacity') return;
+    if (!infoCard.classList.contains('visible')) {
+      infoCard.style.display = 'none';
+      infoCard.classList.remove('hiding');
+      if (infoCardHideTimer) {
+        clearTimeout(infoCardHideTimer);
+        infoCardHideTimer = null;
+      }
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && infoCard.classList.contains('visible')) {
+      hide();
+      infoFab.focus();
+    }
+  });
+}
 function wireSettings() {
   const fab = document.getElementById('settingsFab');
   const root = document.getElementById('settingsRoot');
@@ -474,7 +1052,7 @@ function finalizeAnimatedPanels() {
 
 /* -------- Keyboard Shortcut Enhancements -------- */
 function focusSearch() {
-  const el = document.getElementById('userId');
+  const el = document.getElementById('searchId');
   if (el) { el.focus(); el.select(); announceStatus('Search focused'); }
 }
 function toggleTheme() {
@@ -503,7 +1081,7 @@ document.addEventListener('keydown', e => {
 
   // Enter global focus when not inside search input (or if body focused)
   if (e.key === 'Enter' && !e.altKey && !e.metaKey && !e.ctrlKey) {
-    if (!inEditable || e.target.id !== 'userId') {
+    if (!inEditable || e.target.id !== 'searchId') {
       e.preventDefault();
       focusSearch();
       return;
@@ -599,7 +1177,7 @@ document.addEventListener('keyup', (e) => {
 });
 
 // Open link (index) and copy associated text
-function handleTroubleshootLink(idx) {
+async function handleTroubleshootLink(idx) {
   const links = document.querySelectorAll('.info-details .issue-link');
   if (!links.length) return;
   const link = links[idx] || links[0];
@@ -610,25 +1188,12 @@ function handleTroubleshootLink(idx) {
   ];
   const text = copyTexts[idx] || copyTexts[0];
 
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(()=>{});
-    } else {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } catch(_) {}
-      ta.remove();
-    }
-  } catch(_) {}
+  const ok = await copyTextToClipboard(text);
 
   if (link && link.href) {
     window.open(link.href, '_blank', 'noopener');
   }
-  announceStatus(`Copied: ${text}`, 'ok');
+  announceStatus(`Copied: ${text}`, ok ? 'ok' : 'warn');
 }
 
 // Optional: initial ready status
