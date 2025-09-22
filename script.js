@@ -24,7 +24,7 @@ const MODE_CONFIG = {
   user: {
     label: 'User ID',
     placeholder: 'Enter Discord user ID (snowflake)',
-    helper: 'Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID',
+    helper: 'Example: <code style="user-select: text;">80351110224678912</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
     empty: 'Enter an ID to fetch a public user profile.',
     emptyIcon: '🧪',
     validation: 'Enter a numeric Discord user ID (5–30 digits).',
@@ -33,7 +33,7 @@ const MODE_CONFIG = {
   guild: {
     label: 'Guild ID',
     placeholder: 'Enter Discord guild/server ID (snowflake)',
-    helper: 'Example: <code>290926798629997171</code> • Right‑click a server icon (Dev Mode) → Copy ID',
+    helper: 'Example: <code style="user-select: text;">1407008747557097514</code> &bull; Right&#8209;click a server icon (Dev Mode) &rarr; <u>Copy ID<br>Note: The bot <u>must</u> be in the server to fetch its info.',
     empty: 'Enter an ID to fetch a public server snapshot.',
     emptyIcon: '🏰',
     validation: 'Enter a numeric Discord guild ID (5–30 digits).',
@@ -42,15 +42,6 @@ const MODE_CONFIG = {
 };
 
 let currentMode = 'user';
-
-const FEATURE_DESCRIPTIONS = {
-  COMMUNITY: 'Community servers unlock welcome screens, server insights, and membership screening tools.',
-  DISCOVERABLE: 'Eligible for Discord’s Server Discovery directory so people can find it organically.',
-  HUB: 'Part of the Student Hubs program that connects school communities.',
-  NEWS: 'Announcement channels can publish updates that followers receive in their own servers.',
-  PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
-  VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
-};
 
 /* ------------ Utilities ------------ */
 function snowflakeToDate(id) {
@@ -236,13 +227,6 @@ function renderUserCard(user) {
   `;
 }
 
-function renderGuildFeaturePill(feature='', highlight=false) {
-  const name = escapeHTML(formatFeatureName(feature));
-  const tooltip = FEATURE_DESCRIPTIONS[feature] ? ` data-tooltip="${escapeHTML(FEATURE_DESCRIPTIONS[feature])}"` : '';
-  const highlightAttr = highlight ? ' data-highlight="true"' : '';
-  return `<span class="feature-pill"${highlightAttr}${tooltip}>${name}</span>`;
-}
-
 function renderGuildCard(guild) {
   const icon = getGuildIcon(guild);
   const banner = getGuildBanner(guild);
@@ -251,18 +235,9 @@ function renderGuildCard(guild) {
   const bannerStyle = buildBannerStyle(banner.static);
   const highlightFeatures = new Set(['VERIFIED','PARTNERED','DISCOVERABLE','COMMUNITY','HUB']);
   const features = Array.isArray(guild.features) ? guild.features : [];
-  const featurePills = features
-    .map(f => renderGuildFeaturePill(f, highlightFeatures.has(f)))
-    .join('');
-  const featureMarkup = `
-    <div class="feature-section">
-      <div class="feature-header">
-        <span class="feature-title">Public features</span>
-        <span class="feature-hint">Flags provided by Discord — hover for details.</span>
-      </div>
-      ${featurePills ? `<div class="guild-features">${featurePills}</div>` : '<div class="no-features">No public guild features detected</div>'}
-    </div>
-  `;
+  const featureMarkup = features.length
+    ? `<div class="guild-features">${features.map(f => `<span class="feature-pill" data-highlight="${highlightFeatures.has(f)}">${escapeHTML(formatFeatureName(f))}</span>`).join('')}</div>`
+    : '<div class="no-features">No public guild features detected</div>';
   const counts = [];
   if (guild.approximate_member_count != null) counts.push({ label:'Members', value: formatNumber(guild.approximate_member_count) });
   if (guild.approximate_presence_count != null) counts.push({ label:'Online', value: formatNumber(guild.approximate_presence_count) });
@@ -529,7 +504,19 @@ if (form && input) {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (reqToken !== currentReqToken || mode !== currentMode) return;
-      if (err.status === 404) { showError(config.notFound, err.body||'', mode); shakeScreen(); }
+      if (err.status === 404) {
+        let message = config.notFound;
+        if (err.body) {
+          try {
+            const parsed = JSON.parse(err.body);
+            if (parsed && parsed.code === 10004) {
+              message = 'Invite the worker bot to that server before searching.';
+            }
+          } catch {}
+        }
+        showError(message, err.body||'', mode);
+        shakeScreen();
+      }
       else if (err.status === 429) showError('Rate limited (429).', err.body||'', mode);
       else if (err.status) showError(`HTTP ${err.status}`, err.body||'', mode);
       else showError('Network error.', '', mode);
