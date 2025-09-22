@@ -43,6 +43,14 @@ const MODE_CONFIG = {
 
 let currentMode = 'user';
 
+const FEATURE_DESCRIPTIONS = {
+  COMMUNITY: 'Community servers unlock welcome screens, server insights, and membership screening tools.',
+  DISCOVERABLE: 'Eligible for Discord’s Server Discovery directory so people can find it organically.',
+  HUB: 'Part of the Student Hubs program that connects school communities.',
+  NEWS: 'Announcement channels can publish updates that followers receive in their own servers.',
+  PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
+  VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
+};
 /* ------------ Utilities ------------ */
 function snowflakeToDate(id) {
   try { return new Date(Number(((BigInt(id) >> 22n) + DISCORD_EPOCH))); } catch { return null; }
@@ -227,17 +235,39 @@ function renderUserCard(user) {
   `;
 }
 
+function renderGuildFeaturePill(feature='') {
+  const name = formatFeatureName(feature);
+  const description = FEATURE_DESCRIPTIONS[feature] || `Discord flag: ${name}.`;
+  const safeName = escapeHTML(name);
+  const safeFeature = escapeHTML(feature);
+  const safeDescription = escapeHTML(description);
+  return `<button type="button" class="feature-pill" data-feature="${safeFeature}" data-feature-label="${safeName}" data-feature-description="${safeDescription}" aria-pressed="false"><span class="feature-dot" aria-hidden="true"></span><span class="feature-label">${safeName}</span></button>`;
+}
+
 function renderGuildCard(guild) {
   const icon = getGuildIcon(guild);
   const banner = getGuildBanner(guild);
   const created = snowflakeToDate(guild.id);
   const createdStr = created ? created.toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'}) : '';
   const bannerStyle = buildBannerStyle(banner.static);
-  const highlightFeatures = new Set(['VERIFIED','PARTNERED','DISCOVERABLE','COMMUNITY','HUB']);
   const features = Array.isArray(guild.features) ? guild.features : [];
-  const featureMarkup = features.length
-    ? `<div class="guild-features">${features.map(f => `<span class="feature-pill" data-highlight="${highlightFeatures.has(f)}">${escapeHTML(formatFeatureName(f))}</span>`).join('')}</div>`
-    : '<div class="no-features">No public guild features detected</div>';
+  const featurePills = features.map(f => renderGuildFeaturePill(f)).join('');
+  const hasFeatures = Boolean(featurePills);
+  const featureDetailDefault = 'Select a feature badge to learn what Discord enables for this server.';
+  const featureHint = hasFeatures
+    ? 'Flags provided by Discord — tap or click a badge to learn more.'
+    : 'Flags provided by Discord when available.';
+  const featureMarkup = `
+    <div class="feature-section">
+      <div class="feature-header">
+        <span class="feature-title">Public features</span>
+        <span class="feature-hint">${escapeHTML(featureHint)}</span>
+      </div>
+      ${featurePills
+        ? `<div class="guild-features">${featurePills}</div><div class="feature-detail" data-feature-detail>${escapeHTML(featureDetailDefault)}</div>`
+        : '<div class="no-features">No public guild features detected</div>'}
+    </div>
+  `;
   const counts = [];
   if (guild.approximate_member_count != null) counts.push({ label:'Members', value: formatNumber(guild.approximate_member_count) });
   if (guild.approximate_presence_count != null) counts.push({ label:'Online', value: formatNumber(guild.approximate_presence_count) });
@@ -284,6 +314,55 @@ function renderGuildCard(guild) {
   `;
 }
 
+function updateFeatureDetail(button, announce=true) {
+  if (!button) return;
+  const section = button.closest('.feature-section');
+  if (!section) return;
+  const detail = section.querySelector('.feature-detail');
+  if (!detail) return;
+  const pills = Array.from(section.querySelectorAll('.feature-pill'));
+  pills.forEach(pill => {
+    const isActive = pill === button;
+    pill.classList.toggle('is-active', isActive);
+    pill.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+  const label = button.dataset.featureLabel || button.textContent.trim();
+  const description = button.dataset.featureDescription || '';
+  const safeLabel = escapeHTML(label);
+  const safeDescription = escapeMultiline(description || 'No description available.');
+  detail.innerHTML = `<strong>${safeLabel}</strong><span>${safeDescription}</span>`;
+  if (announce) announceStatus(`${label} feature details shown`, 'info');
+}
+
+function wireGuildFeatureInteractions() {
+  const sections = document.querySelectorAll('#resultCard .feature-section');
+  sections.forEach(section => {
+    const pills = Array.from(section.querySelectorAll('.feature-pill'));
+    if (!pills.length) return;
+    pills.forEach((pill, index) => {
+      if (pill.dataset.bound === '1') return;
+      pill.dataset.bound = '1';
+      pill.addEventListener('click', () => updateFeatureDetail(pill));
+      pill.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          updateFeatureDetail(pill);
+        } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          const dir = e.key === 'ArrowRight' ? 1 : -1;
+          const target = pills[(index + dir + pills.length) % pills.length];
+          target.focus();
+          updateFeatureDetail(target);
+        }
+      });
+    });
+  });
+
+  const firstPill = document.querySelector('#resultCard .feature-section .feature-pill');
+  if (firstPill) {
+    updateFeatureDetail(firstPill, false);
+  }
+}
 /* ------------ Skeleton / States ------------ */
 function renderEmptyState(mode=currentMode) {
   const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
@@ -329,13 +408,15 @@ function showLoading(mode=currentMode) {
   setCard(skeletonCard(), 'loading-state', mode);
 }
 
-function showError(msg, detail='', mode=currentMode) {
+function showError(msg, detail='', mode=currentMode, opts={}) {
+  const allowHTML = Boolean(opts.allowHTML);
   let extra = '';
   if (detail) {
     const safe = escapeHTML(detail); // full text; scrolling handled via CSS
     extra = `\n<details class="err-details" open>\n  <summary><span class="err-icon" aria-hidden="true">!</span><span>Details</span><span class="chevron" aria-hidden="true"></span></summary>\n  <div class="collapsible-body">\n    <pre class="err-pre">${safe}</pre>\n  </div>\n</details>`;
   }
-  setCard(`<div class="error">${escapeHTML(msg)}${extra}</div>`, 'error-state', mode);
+  const message = allowHTML ? msg : escapeHTML(msg);
+  setCard(`<div class="error">${message}${extra}</div>`, 'error-state', mode);
   // Apply same animation enhancement to error details
   const d = document.querySelector('#resultCard .err-details');
   if (d) {
@@ -455,7 +536,6 @@ function updateModeUI(resetCard=false) {
     setCard(renderEmptyState(currentMode), 'empty', currentMode);
   }
 }
-
 function setMode(mode) {
   if (!mode || !MODE_CONFIG[mode] || mode === currentMode) return;
   currentMode = mode;
@@ -464,7 +544,6 @@ function setMode(mode) {
   updateModeUI(true);
   announceStatus(`Switched to ${MODE_CONFIG[mode].label} lookup`, 'ok');
 }
-
 modeButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => setMode(btn.dataset.mode));
   btn.addEventListener('keydown', e => {
@@ -501,20 +580,24 @@ if (form && input) {
       const renderer = mode === 'guild' ? renderGuildCard : renderUserCard;
       setCard(renderer(data), '', mode);
       wireMediaHover();
+      if (mode === 'guild') wireGuildFeatureInteractions();
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (reqToken !== currentReqToken || mode !== currentMode) return;
       if (err.status === 404) {
         let message = config.notFound;
-        if (err.body) {
+        let allowHTML = false;
+        const detail = err.body || '';
+        if (mode === 'guild' && detail) {
           try {
-            const parsed = JSON.parse(err.body);
+            const parsed = JSON.parse(detail);
             if (parsed && parsed.code === 10004) {
-              message = 'Invite the worker bot to that server before searching.';
+              message = `The bot isn’t in that server yet. Invite the worker bot before searching.<br><a class="err-link" href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener noreferrer">Invite the worker bot</a>`;
+              allowHTML = true;
             }
           } catch {}
         }
-        showError(message, err.body||'', mode);
+        showError(message, detail, mode, { allowHTML });
         shakeScreen();
       }
       else if (err.status === 429) showError('Rate limited (429).', err.body||'', mode);
