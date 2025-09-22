@@ -1,24 +1,43 @@
-// Show Help & Tips when info icon is clicked
-document.addEventListener('DOMContentLoaded', function() {
-  var infoFab = document.getElementById('infoFab');
-  var infoCard = document.getElementById('infoCard');
-  if (infoFab && infoCard) {
-    infoFab.addEventListener('click', function() {
-      if (infoCard.classList.contains('visible')) {
-        infoCard.classList.remove('visible');
-        setTimeout(function(){ infoCard.style.display = 'none'; }, 450);
-      } else {
-        infoCard.style.display = 'block';
-        setTimeout(function(){ infoCard.classList.add('visible'); }, 10);
-      }
-    });
-  }
-});
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const cache = new Map();
 let currentReqToken = 0;
+let cardTransitionHandler = null;
+let cardTransitionTimer = null;
+let infoCardHideTimer = null;
+
+const MODE_CONFIG = {
+  user: {
+    label: 'User ID',
+    placeholder: 'Enter Discord user ID (snowflake)',
+    helper: 'Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID',
+    empty: 'Enter an ID to fetch a public user profile.',
+    emptyIcon: '🧪',
+    validation: 'Enter a numeric Discord user ID (5–30 digits).',
+    notFound: 'User not found (404).'
+  },
+  guild: {
+    label: 'Guild ID',
+    placeholder: 'Enter Discord guild/server ID (snowflake)',
+    helper: 'Example: <code>290926798629997171</code> • Right‑click a server icon (Dev Mode) → Copy ID',
+    empty: 'Enter an ID to fetch a public server snapshot.',
+    emptyIcon: '🏰',
+    validation: 'Enter a numeric Discord guild ID (5–30 digits).',
+    notFound: 'Guild not found (404).'
+  }
+};
+
+let currentMode = 'user';
+
+const FEATURE_DESCRIPTIONS = {
+  COMMUNITY: 'Community servers unlock welcome screens, server insights, and membership screening tools.',
+  DISCOVERABLE: 'Eligible for Discord’s Server Discovery directory so people can find it organically.',
+  HUB: 'Part of the Student Hubs program that connects school communities.',
+  NEWS: 'Announcement channels can publish updates that followers receive in their own servers.',
+  PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
+  VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
+};
 
 const MODE_CONFIG = {
   user: {
@@ -61,6 +80,19 @@ function escapeHTML(s='') {
 
 function escapeMultiline(str='') {
   return escapeHTML(str).replace(/\n+/g, '<br>');
+}
+
+function normalizeColor(value) {
+  if (!value && value !== 0) return '';
+  if (typeof value === 'number') {
+    return '#' + value.toString(16).padStart(6, '0');
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    return trimmed.startsWith('#') ? trimmed : ('#' + trimmed.replace(/^#/, ''));
+  }
+  return '';
 }
 
 function formatNumber(value) {
@@ -189,6 +221,10 @@ function getGuildBanner(guild) {
     const base = `https://cdn.discordapp.com/${path}/${guild.id}/${splash}`;
     return { static:`${base}.webp?size=640`, gif:'' };
   }
+  const color = normalizeColor(guild.banner_color);
+  if (color) {
+    return { static:color, gif:'' };
+  }
   return { static:fallbackGuildGradient(guild.id), gif:'' };
 }
 
@@ -210,6 +246,36 @@ function applyBackgroundFromResource(el, resource) {
   } else {
     el.style.backgroundImage = `url('${resource}')`;
   }
+}
+
+async function copyTextToClipboard(text) {
+  if (!text) return false;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {}
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch (_) {
+      ok = false;
+    } finally {
+      ta.remove();
+    }
+    return ok;
+  } catch (_) {}
+  return false;
 }
 
 /* ------------ Rendering ------------ */
@@ -276,17 +342,22 @@ function renderGuildCard(guild) {
     ? `<div class="guild-counts">${counts.map(c => `<div class="count-box"><span class="count-label">${escapeHTML(c.label)}</span><span class="count-value">${escapeHTML(c.value)}</span></div>`).join('')}</div>`
     : '';
   const metaItems = [
-    { label:'Owner ID', html: guild.owner_id ? `<code>${escapeHTML(guild.owner_id)}</code>` : '—' },
-    { label:'Preferred Locale', text: formatLocale(guild.preferred_locale) },
-    { label:'Verification Level', text: formatVerificationLevel(guild.verification_level) },
-    { label:'2FA Requirement', text: guild.mfa_level === 1 ? 'Required' : 'Not required' },
-    { label:'Boost Tier', text: formatBoostTier(guild.premium_tier) },
-    { label:'NSFW Level', text: formatNSFWLevel(guild.nsfw_level) },
-    { label:'Vanity URL', html: guild.vanity_url_code ? `<a href="https://discord.gg/${encodeURIComponent(guild.vanity_url_code)}" target="_blank" rel="noopener">discord.gg/${escapeHTML(guild.vanity_url_code)}</a>` : '—' }
+    { label:'Owner ID', html: guild.owner_id ? `<code>${escapeHTML(guild.owner_id)}</code>` : '—', copy:guild.owner_id || '' },
+    { label:'Preferred Locale', text: formatLocale(guild.preferred_locale), copy:guild.preferred_locale ? guild.preferred_locale.replace('_','-') : '' },
+    { label:'Verification Level', text: formatVerificationLevel(guild.verification_level), copy: formatVerificationLevel(guild.verification_level) },
+    { label:'2FA Requirement', text: guild.mfa_level === 1 ? 'Required' : 'Not required', copy: guild.mfa_level === 1 ? 'Required' : 'Not required' },
+    { label:'Boost Tier', text: formatBoostTier(guild.premium_tier), copy: formatBoostTier(guild.premium_tier) },
+    { label:'NSFW Level', text: formatNSFWLevel(guild.nsfw_level), copy: formatNSFWLevel(guild.nsfw_level) },
+    { label:'Vanity URL', text: guild.vanity_url_code ? `discord.gg/${guild.vanity_url_code}` : '—', copy: guild.vanity_url_code ? `discord.gg/${guild.vanity_url_code}` : '' }
   ];
   const metaMarkup = `<div class="meta-grid">${metaItems.map(item => {
     const value = item.html != null ? item.html : escapeHTML(item.text ?? '—');
-    return `<div class="meta-item"><span class="meta-label">${escapeHTML(item.label)}</span><span class="meta-value">${value}</span></div>`;
+    const copyValue = item.copy ? escapeHTML(item.copy) : '';
+    const copyAttr = copyValue ? ` data-copy="${copyValue}"` : '';
+    const labelAttr = item.label ? ` data-copy-label="${escapeHTML(item.label)}"` : '';
+    const classes = ['meta-item'];
+    if (copyValue) classes.push('meta-item--copyable');
+    return `<button type="button" class="${classes.join(' ')}"${copyAttr}${labelAttr}><span class="meta-label">${escapeHTML(item.label)}</span><span class="meta-value">${value}</span></button>`;
   }).join('')}</div>`;
 
   const description = guild.description ? `<div class="guild-description">${escapeMultiline(guild.description)}</div>` : '';
@@ -363,6 +434,7 @@ function wireGuildFeatureInteractions() {
     updateFeatureDetail(firstPill, false);
   }
 }
+
 /* ------------ Skeleton / States ------------ */
 function renderEmptyState(mode=currentMode) {
   const config = MODE_CONFIG[mode] || MODE_CONFIG.user;
@@ -398,10 +470,66 @@ function skeletonCard() {
 function setCard(html, cls='', mode=currentMode) {
   const card = document.getElementById('resultCard');
   if (!card) return;
-  const modeClass = mode ? `result-card--${mode}` : '';
-  const classes = ['panel','panel--glass','result-card', cls, modeClass].filter(Boolean).join(' ');
-  card.className = classes;
-  card.innerHTML = html;
+
+  const classes = ['panel','panel--glass','result-card'];
+  if (cls) classes.push(cls);
+  if (mode) classes.push(`result-card--${mode}`);
+
+  const applyContent = () => {
+    card.innerHTML = html;
+    card.className = classes.join(' ');
+    card.dataset.ready = '1';
+    requestAnimationFrame(() => {
+      card.classList.add('is-visible');
+    });
+  };
+
+  const reduceMotion = document.documentElement.classList.contains('reduced-anim');
+
+  if (!card.dataset.ready || reduceMotion) {
+    if (cardTransitionHandler) {
+      card.removeEventListener('transitionend', cardTransitionHandler);
+      cardTransitionHandler = null;
+    }
+    if (cardTransitionTimer) {
+      clearTimeout(cardTransitionTimer);
+      cardTransitionTimer = null;
+    }
+    applyContent();
+    return;
+  }
+
+  card.classList.remove('is-visible');
+
+  if (cardTransitionHandler) {
+    card.removeEventListener('transitionend', cardTransitionHandler);
+    cardTransitionHandler = null;
+  }
+  if (cardTransitionTimer) {
+    clearTimeout(cardTransitionTimer);
+    cardTransitionTimer = null;
+  }
+
+  cardTransitionHandler = event => {
+    if (event.target !== card) return;
+    card.removeEventListener('transitionend', cardTransitionHandler);
+    cardTransitionHandler = null;
+    if (cardTransitionTimer) {
+      clearTimeout(cardTransitionTimer);
+      cardTransitionTimer = null;
+    }
+    applyContent();
+  };
+
+  card.addEventListener('transitionend', cardTransitionHandler);
+
+  cardTransitionTimer = setTimeout(() => {
+    if (cardTransitionHandler) {
+      card.removeEventListener('transitionend', cardTransitionHandler);
+      cardTransitionHandler = null;
+    }
+    applyContent();
+  }, 260);
 }
 
 function showLoading(mode=currentMode) {
@@ -477,6 +605,46 @@ function wireMediaHover() {
   }
 }
 
+function applyCopyFeedback(el) {
+  if (!el) return;
+  el.classList.add('copied');
+  if (el.dataset.copyTimer) {
+    clearTimeout(Number(el.dataset.copyTimer));
+  }
+  const timer = setTimeout(() => {
+    el.classList.remove('copied');
+    delete el.dataset.copyTimer;
+  }, 1400);
+  el.dataset.copyTimer = String(timer);
+}
+
+function wireCopyableMeta() {
+  const items = document.querySelectorAll('#resultCard .meta-item[data-copy]');
+  items.forEach(item => {
+    if (item.dataset.copyBound === '1') return;
+    item.dataset.copyBound = '1';
+    const handle = async () => {
+      const text = item.dataset.copy;
+      if (!text) return;
+      const label = item.dataset.copyLabel || 'Value';
+      const ok = await copyTextToClipboard(text);
+      if (ok) {
+        applyCopyFeedback(item);
+        announceStatus(`Copied ${label}: ${text}`, 'ok');
+      } else {
+        announceStatus(`Unable to copy ${label}.`, 'warn');
+      }
+    };
+    item.addEventListener('click', () => { handle(); });
+    item.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handle();
+      }
+    });
+  });
+}
+
 /* ------------ Fetch ------------ */
 async function fetchDiscordUser(userId, signal) {
   const key = `user:${userId}`;
@@ -536,6 +704,7 @@ function updateModeUI(resetCard=false) {
     setCard(renderEmptyState(currentMode), 'empty', currentMode);
   }
 }
+
 function setMode(mode) {
   if (!mode || !MODE_CONFIG[mode] || mode === currentMode) return;
   currentMode = mode;
@@ -544,6 +713,7 @@ function setMode(mode) {
   updateModeUI(true);
   announceStatus(`Switched to ${MODE_CONFIG[mode].label} lookup`, 'ok');
 }
+
 modeButtons.forEach((btn, idx) => {
   btn.addEventListener('click', () => setMode(btn.dataset.mode));
   btn.addEventListener('keydown', e => {
@@ -581,6 +751,7 @@ if (form && input) {
       setCard(renderer(data), '', mode);
       wireMediaHover();
       if (mode === 'guild') wireGuildFeatureInteractions();
+      wireCopyableMeta();
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (reqToken !== currentReqToken || mode !== currentMode) return;
@@ -620,6 +791,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Stagger already handled via nth-of-type; can add manual delay if needed.
   initTheme();
   wireSettings();
+  wireInfoPanel();
   activateNoScrollbar();
   enhanceDetailsAnimation();
 });
@@ -735,6 +907,74 @@ function animateDetails(detailsEl, bodyEl, open) {
   if (!open) {
     // schedule height animation with attribute removal afterwards
   }
+}
+
+function wireInfoPanel() {
+  const infoFab = document.getElementById('infoFab');
+  const infoCard = document.getElementById('infoCard');
+  if (!infoFab || !infoCard) return;
+
+  const show = () => {
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.style.display = 'block';
+    infoCard.setAttribute('aria-hidden', 'false');
+    infoFab.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => {
+      infoCard.classList.add('visible');
+      infoCard.classList.remove('hiding');
+    });
+  };
+
+  const hide = () => {
+    if (!infoCard.classList.contains('visible')) return;
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.classList.remove('visible');
+    infoCard.setAttribute('aria-hidden', 'true');
+    infoFab.setAttribute('aria-expanded', 'false');
+    const reduced = document.documentElement.classList.contains('reduced-anim');
+    if (reduced) {
+      infoCard.classList.remove('hiding');
+      infoCard.style.display = 'none';
+      return;
+    }
+    infoCard.classList.add('hiding');
+    infoCardHideTimer = setTimeout(() => {
+      if (!infoCard.classList.contains('visible')) {
+        infoCard.style.display = 'none';
+        infoCard.classList.remove('hiding');
+      }
+      infoCardHideTimer = null;
+    }, 420);
+  };
+
+  infoFab.addEventListener('click', () => {
+    if (infoCard.classList.contains('visible')) hide(); else show();
+  });
+
+  infoFab.setAttribute('aria-controls', infoCard.id);
+  infoFab.setAttribute('aria-expanded', infoCard.classList.contains('visible') ? 'true' : 'false');
+  infoCard.setAttribute('aria-hidden', infoCard.classList.contains('visible') ? 'false' : 'true');
+
+  infoCard.addEventListener('transitionend', event => {
+    if (event.target !== infoCard || event.propertyName !== 'opacity') return;
+    if (!infoCard.classList.contains('visible')) {
+      infoCard.style.display = 'none';
+      infoCard.classList.remove('hiding');
+      if (infoCardHideTimer) {
+        clearTimeout(infoCardHideTimer);
+        infoCardHideTimer = null;
+      }
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && infoCard.classList.contains('visible')) {
+      hide();
+      infoFab.focus();
+    }
+  });
 }
 function wireSettings() {
   const fab = document.getElementById('settingsFab');
@@ -963,7 +1203,7 @@ document.addEventListener('keyup', (e) => {
 });
 
 // Open link (index) and copy associated text
-function handleTroubleshootLink(idx) {
+async function handleTroubleshootLink(idx) {
   const links = document.querySelectorAll('.info-details .issue-link');
   if (!links.length) return;
   const link = links[idx] || links[0];
@@ -974,25 +1214,12 @@ function handleTroubleshootLink(idx) {
   ];
   const text = copyTexts[idx] || copyTexts[0];
 
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).catch(()=>{});
-    } else {
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.position = 'fixed';
-      ta.style.left = '-9999px';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } catch(_) {}
-      ta.remove();
-    }
-  } catch(_) {}
+  const ok = await copyTextToClipboard(text);
 
   if (link && link.href) {
     window.open(link.href, '_blank', 'noopener');
   }
-  announceStatus(`Copied: ${text}`, 'ok');
+  announceStatus(`Copied: ${text}`, ok ? 'ok' : 'warn');
 }
 
 // Optional: initial ready status

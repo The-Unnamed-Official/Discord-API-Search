@@ -323,6 +323,16 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 }
 
 /* ---------- Result Card ---------- */
+.result-card[data-ready] {
+  opacity:0;
+  transform:translateY(18px);
+  transition:opacity .26s cubic-bezier(.18,.8,.32,1), transform .32s cubic-bezier(.18,.8,.32,1);
+  will-change:opacity, transform;
+}
+.result-card[data-ready].is-visible {
+  opacity:1;
+  transform:none;
+}
 .result-card.empty { display:flex; align-items:center; justify-content:center; min-height:420px; }
 .placeholder-msg {
   text-align:center; color:var(--text-dim); font-size:.8rem;
@@ -536,8 +546,53 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 .meta-item {
   background:#1e232a;
   border-radius:var(--radius-md);
-  padding:12px 14px;
+  padding:12px 18px 12px 14px;
   box-shadow:inset 0 1px 0 #ffffff05;
+  border:none;
+  width:100%;
+  text-align:left;
+  color:inherit;
+  font:inherit;
+  cursor:default;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+  position:relative;
+  display:block;
+}
+.meta-item:focus { outline:none; }
+.meta-item:focus-visible {
+  outline:2px solid var(--accent, #5865f2);
+  outline-offset:2px;
+}
+.meta-item--copyable { cursor:pointer; }
+.meta-item--copyable:hover {
+  transform:translateY(-2px);
+  box-shadow:0 10px 22px -14px rgba(0,0,0,.45);
+}
+.meta-item--copyable:active {
+  transform:translateY(0);
+}
+.meta-item::after {
+  content:"";
+  position:absolute;
+  top:50%;
+  right:14px;
+  transform:translateY(-50%);
+  font-size:.7rem;
+  letter-spacing:.4px;
+  font-weight:600;
+  color:var(--accent, #5865f2);
+  opacity:0;
+  transition:opacity .18s ease;
+}
+.meta-item.copied {
+  box-shadow:0 12px 26px -16px var(--accent, #5865f2);
+}
+.meta-item.copied::after {
+  content:"Copied!";
+  opacity:1;
+}
+.meta-item.copied .meta-value {
+  color:#fff;
 }
 .meta-label {
   display:block;
@@ -551,6 +606,13 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
   font-size:.88rem;
   color:var(--text-sub);
   word-break:break-word;
+}
+.meta-value code {
+  background:rgba(255,255,255,.04);
+  border-radius:6px;
+  padding:2px 6px;
+  font-size:.82rem;
+  color:inherit;
 }
 .guild-counts {
   display:flex;
@@ -741,6 +803,10 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
   padding:26px 26px 34px;
   border:1px solid #44474e;
   isolation:isolate;
+  opacity:0;
+  transform:translateY(24px) scale(.98);
+  pointer-events:none;
+  transition:opacity .4s cubic-bezier(.18,.8,.3,1), transform .45s cubic-bezier(.18,.8,.3,1);
 }
 .info-card:before { filter:blur(0) saturate(1.1); }
 .info-card .info-section { position:relative; }
@@ -1408,6 +1474,18 @@ body.shake-screen { background:var(--bg); }
   box-shadow:inset 0 1px 0 #ffffff;
 }
 :root[data-theme="light"] .meta-item { background:#f2f4f8; box-shadow:inset 0 1px 0 #ffffff; }
+:root[data-theme="light"] .meta-item--copyable:hover {
+  box-shadow:0 14px 26px -18px rgba(15,25,35,.28);
+}
+:root[data-theme="light"] .meta-item.copied {
+  box-shadow:0 12px 26px -16px rgba(88,101,242,.55);
+}
+:root[data-theme="light"] .meta-item.copied .meta-value {
+  color:#1f2730;
+}
+:root[data-theme="light"] .meta-value code {
+  background:#dfe4f3;
+}
 :root[data-theme="light"] .meta-value { color:#4a5563; }
 :root[data-theme="light"] .count-box {
   background:#edf1f8;
@@ -1523,6 +1601,19 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
 .reduced-anim .cta-btn {
   transform:none !important;
 }
+.reduced-anim .result-card[data-ready] {
+  transition:none !important;
+  opacity:1 !important;
+  transform:none !important;
+}
+.reduced-anim .info-card {
+  transition:none !important;
+  transform:none !important;
+  opacity:1 !important;
+}
+.reduced-anim .info-card:not(.visible) {
+  display:none !important;
+}
 .reduced-anim .skeleton .skel-banner:before,
 .reduced-anim .skeleton .skel-avatar:before,
 .reduced-anim .skeleton .skel-line:before,
@@ -1537,26 +1628,9 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
   opacity:1;
   transform:translateY(0) scale(1);
   pointer-events:auto;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
 }
 .info-card.hiding {
-  opacity:0;
-  transform:translateY(24px) scale(.98);
   pointer-events:none;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
-}
-.info-card.visible {
-  display:block;
-  opacity:1;
-  transform:translateY(0) scale(1);
-  pointer-events:auto;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
-}
-.info-card.hiding {
-  opacity:0;
-  transform:translateY(24px) scale(.98);
-  pointer-events:none;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
 }
 
 .reduced-anim .orb,

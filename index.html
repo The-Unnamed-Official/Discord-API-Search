@@ -70,7 +70,7 @@
       </div>
     </section>
 
-  <aside class="panel panel--info info-card" id="infoCard" data-animate data-anim-dir="right">
+  <aside class="panel panel--info info-card" id="infoCard" data-animate data-anim-dir="right" aria-hidden="true">
     <div class="info-header">
         <h2 class="info-title">Help & Tips</h2>
       </div>
@@ -78,16 +78,16 @@
       <div class="info-section">
         <h3><span>How it works</span></h3>
         <p class="info-text">
-          Uses a lightweight proxy Worker to call Discord’s <code>/users/{id}</code> endpoint.
-          Returns avatar, banner, flags, and creation date (derived from the snowflake).
+          Uses a lightweight proxy Worker to call Discord’s <code>/users/{id}</code> and <code>/guilds/{id}</code> (with <code>with_counts=true</code>) endpoints.
+          Shows avatars, banners, public flags, creation dates, plus guild icons, member counts, features, and moderation metadata without exposing a bot token in the browser.
         </p>
       </div>
 
       <div class="info-section">
         <h3><span>Status Codes</span></h3>
         <ul class="tip-list">
-          <li><span class="ti ti-ok"></span><strong>200</strong> User found</li>
-          <li><span class="ti ti-miss"></span><strong>404</strong> User not found</li>
+          <li><span class="ti ti-ok"></span><strong>200</strong> Profile or guild snapshot fetched</li>
+          <li><span class="ti ti-miss"></span><strong>404</strong> Not found or bot missing from that guild</li>
           <li><span class="ti ti-rate"></span><strong>429</strong> Rate limited</li>
           <li><span class="ti ti-net"></span><strong>502+</strong> Upstream issues</li>
         </ul>
@@ -102,6 +102,7 @@
         <div class="collapsible-body">
           <ul class="tip-list compact">
             <li><span class="ti ti-net"></span>No response → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Trouble with No response">here</a></li>
+            <li><span class="ti ti-unauth"></span>Unknown Guild (10004) → Invite the worker bot <a href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener">here</a> then retry</li>
             <li><span class="ti ti-refresh"></span>Weird HTML → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Weird HTML error / Wrong Path / 404 No users found">here</a></li>
             <li><span class="ti ti-rate"></span>Repeated 429 → pause a minute</li>
           </ul>
@@ -121,7 +122,7 @@
     <button class="settings-fab" id="settingsFab" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
       <span class="gear" aria-hidden="true"></span>
     </button>
-    <button class="settings-fab info-fab" id="infoFab" title="Help & Tips">
+    <button class="settings-fab info-fab" id="infoFab" title="Help & Tips" aria-haspopup="true" aria-expanded="false" aria-controls="infoCard">
       <img src="resources/70178-information.png" width="30" alt="Information Icon" style="vertical-align:middle;">
     </button>
     <div class="settings-panel"
