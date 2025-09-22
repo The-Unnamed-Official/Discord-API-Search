@@ -504,7 +504,19 @@ if (form && input) {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (reqToken !== currentReqToken || mode !== currentMode) return;
-      if (err.status === 404) { showError(config.notFound, err.body||'', mode); shakeScreen(); }
+      if (err.status === 404) {
+        let message = config.notFound;
+        if (err.body) {
+          try {
+            const parsed = JSON.parse(err.body);
+            if (parsed && parsed.code === 10004) {
+              message = 'Invite the worker bot to that server before searching.';
+            }
+          } catch {}
+        }
+        showError(message, err.body||'', mode);
+        shakeScreen();
+      }
       else if (err.status === 429) showError('Rate limited (429).', err.body||'', mode);
       else if (err.status) showError(`HTTP ${err.status}`, err.body||'', mode);
       else showError('Network error.', '', mode);
