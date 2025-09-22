@@ -39,6 +39,37 @@ const FEATURE_DESCRIPTIONS = {
   VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
 };
 
+const MODE_CONFIG = {
+  user: {
+    label: 'User ID',
+    placeholder: 'Enter Discord user ID (snowflake)',
+    helper: 'Example: <code style="user-select: text;">80351110224678912</code> &bull; Right&#8209;click a user in Discord (Dev Mode) &rarr; <u>Copy ID</u>',
+    empty: 'Enter an ID to fetch a public user profile.',
+    emptyIcon: '🧪',
+    validation: 'Enter a numeric Discord user ID (5–30 digits).',
+    notFound: 'User not found (404).'
+  },
+  guild: {
+    label: 'Guild ID',
+    placeholder: 'Enter Discord guild/server ID (snowflake)',
+    helper: 'Example: <code style="user-select: text;">1407008747557097514</code> &bull; Right&#8209;click a server icon (Dev Mode) &rarr; <u>Copy ID<br>Note: The bot <u>must</u> be in the server to fetch its info.',
+    empty: 'Enter an ID to fetch a public server snapshot.',
+    emptyIcon: '🏰',
+    validation: 'Enter a numeric Discord guild ID (5–30 digits).',
+    notFound: 'Guild not found (404).'
+  }
+};
+
+let currentMode = 'user';
+
+const FEATURE_DESCRIPTIONS = {
+  COMMUNITY: 'Community servers unlock welcome screens, server insights, and membership screening tools.',
+  DISCOVERABLE: 'Eligible for Discord’s Server Discovery directory so people can find it organically.',
+  HUB: 'Part of the Student Hubs program that connects school communities.',
+  NEWS: 'Announcement channels can publish updates that followers receive in their own servers.',
+  PARTNERED: 'Recognized by Discord as a Partnered community with extra perks.',
+  VERIFIED: 'Officially verified by Discord (typically for game studios, artists, or large brands).'
+};
 /* ------------ Utilities ------------ */
 function snowflakeToDate(id) {
   try { return new Date(Number(((BigInt(id) >> 22n) + DISCORD_EPOCH))); } catch { return null; }

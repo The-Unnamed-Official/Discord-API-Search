@@ -113,6 +113,9 @@ function json(obj, status = 200) {
 | 5xx  | Upstream / proxy issue | Retry; check Worker logs |
 | Other | Generic HTTP code | Inspect details panel / console |
 
+## Troubleshooting
+- **Guild lookups require bot membership.** If a server search returns `Unknown Guild (10004)` or guidance to invite the worker bot, make sure the Worker’s bot account is actually a member of that guild before retrying the lookup.
+
 ## Security Notes
 - Bot token never shipped to clients; only the Worker sees it.
 - Do not add query features that echo internal headers without sanitizing.
