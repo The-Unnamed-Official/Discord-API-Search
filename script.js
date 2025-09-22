@@ -1,24 +1,11 @@
-// Show Help & Tips when info icon is clicked
-document.addEventListener('DOMContentLoaded', function() {
-  var infoFab = document.getElementById('infoFab');
-  var infoCard = document.getElementById('infoCard');
-  if (infoFab && infoCard) {
-    infoFab.addEventListener('click', function() {
-      if (infoCard.classList.contains('visible')) {
-        infoCard.classList.remove('visible');
-        setTimeout(function(){ infoCard.style.display = 'none'; }, 450);
-      } else {
-        infoCard.style.display = 'block';
-        setTimeout(function(){ infoCard.classList.add('visible'); }, 10);
-      }
-    });
-  }
-});
 // (Assumes proxy-based API; adjust API_BASE as needed)
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const cache = new Map();
 let currentReqToken = 0;
+let cardTransitionHandler = null;
+let cardTransitionTimer = null;
+let infoCardHideTimer = null;
 
 const MODE_CONFIG = {
   user: {
@@ -452,10 +439,66 @@ function skeletonCard() {
 function setCard(html, cls='', mode=currentMode) {
   const card = document.getElementById('resultCard');
   if (!card) return;
-  const modeClass = mode ? `result-card--${mode}` : '';
-  const classes = ['panel','panel--glass','result-card', cls, modeClass].filter(Boolean).join(' ');
-  card.className = classes;
-  card.innerHTML = html;
+
+  const classes = ['panel','panel--glass','result-card'];
+  if (cls) classes.push(cls);
+  if (mode) classes.push(`result-card--${mode}`);
+
+  const applyContent = () => {
+    card.innerHTML = html;
+    card.className = classes.join(' ');
+    card.dataset.ready = '1';
+    requestAnimationFrame(() => {
+      card.classList.add('is-visible');
+    });
+  };
+
+  const reduceMotion = document.documentElement.classList.contains('reduced-anim');
+
+  if (!card.dataset.ready || reduceMotion) {
+    if (cardTransitionHandler) {
+      card.removeEventListener('transitionend', cardTransitionHandler);
+      cardTransitionHandler = null;
+    }
+    if (cardTransitionTimer) {
+      clearTimeout(cardTransitionTimer);
+      cardTransitionTimer = null;
+    }
+    applyContent();
+    return;
+  }
+
+  card.classList.remove('is-visible');
+
+  if (cardTransitionHandler) {
+    card.removeEventListener('transitionend', cardTransitionHandler);
+    cardTransitionHandler = null;
+  }
+  if (cardTransitionTimer) {
+    clearTimeout(cardTransitionTimer);
+    cardTransitionTimer = null;
+  }
+
+  cardTransitionHandler = event => {
+    if (event.target !== card) return;
+    card.removeEventListener('transitionend', cardTransitionHandler);
+    cardTransitionHandler = null;
+    if (cardTransitionTimer) {
+      clearTimeout(cardTransitionTimer);
+      cardTransitionTimer = null;
+    }
+    applyContent();
+  };
+
+  card.addEventListener('transitionend', cardTransitionHandler);
+
+  cardTransitionTimer = setTimeout(() => {
+    if (cardTransitionHandler) {
+      card.removeEventListener('transitionend', cardTransitionHandler);
+      cardTransitionHandler = null;
+    }
+    applyContent();
+  }, 260);
 }
 
 function showLoading(mode=currentMode) {
@@ -717,6 +760,7 @@ window.addEventListener('DOMContentLoaded', () => {
   // Stagger already handled via nth-of-type; can add manual delay if needed.
   initTheme();
   wireSettings();
+  wireInfoPanel();
   activateNoScrollbar();
   enhanceDetailsAnimation();
 });
@@ -832,6 +876,74 @@ function animateDetails(detailsEl, bodyEl, open) {
   if (!open) {
     // schedule height animation with attribute removal afterwards
   }
+}
+
+function wireInfoPanel() {
+  const infoFab = document.getElementById('infoFab');
+  const infoCard = document.getElementById('infoCard');
+  if (!infoFab || !infoCard) return;
+
+  const show = () => {
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.style.display = 'block';
+    infoCard.setAttribute('aria-hidden', 'false');
+    infoFab.setAttribute('aria-expanded', 'true');
+    requestAnimationFrame(() => {
+      infoCard.classList.add('visible');
+      infoCard.classList.remove('hiding');
+    });
+  };
+
+  const hide = () => {
+    if (!infoCard.classList.contains('visible')) return;
+    clearTimeout(infoCardHideTimer);
+    infoCardHideTimer = null;
+    infoCard.classList.remove('visible');
+    infoCard.setAttribute('aria-hidden', 'true');
+    infoFab.setAttribute('aria-expanded', 'false');
+    const reduced = document.documentElement.classList.contains('reduced-anim');
+    if (reduced) {
+      infoCard.classList.remove('hiding');
+      infoCard.style.display = 'none';
+      return;
+    }
+    infoCard.classList.add('hiding');
+    infoCardHideTimer = setTimeout(() => {
+      if (!infoCard.classList.contains('visible')) {
+        infoCard.style.display = 'none';
+        infoCard.classList.remove('hiding');
+      }
+      infoCardHideTimer = null;
+    }, 420);
+  };
+
+  infoFab.addEventListener('click', () => {
+    if (infoCard.classList.contains('visible')) hide(); else show();
+  });
+
+  infoFab.setAttribute('aria-controls', infoCard.id);
+  infoFab.setAttribute('aria-expanded', infoCard.classList.contains('visible') ? 'true' : 'false');
+  infoCard.setAttribute('aria-hidden', infoCard.classList.contains('visible') ? 'false' : 'true');
+
+  infoCard.addEventListener('transitionend', event => {
+    if (event.target !== infoCard || event.propertyName !== 'opacity') return;
+    if (!infoCard.classList.contains('visible')) {
+      infoCard.style.display = 'none';
+      infoCard.classList.remove('hiding');
+      if (infoCardHideTimer) {
+        clearTimeout(infoCardHideTimer);
+        infoCardHideTimer = null;
+      }
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && infoCard.classList.contains('visible')) {
+      hide();
+      infoFab.focus();
+    }
+  });
 }
 function wireSettings() {
   const fab = document.getElementById('settingsFab');

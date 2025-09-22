@@ -323,6 +323,16 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
 }
 
 /* ---------- Result Card ---------- */
+.result-card[data-ready] {
+  opacity:0;
+  transform:translateY(18px);
+  transition:opacity .26s cubic-bezier(.18,.8,.32,1), transform .32s cubic-bezier(.18,.8,.32,1);
+  will-change:opacity, transform;
+}
+.result-card[data-ready].is-visible {
+  opacity:1;
+  transform:none;
+}
 .result-card.empty { display:flex; align-items:center; justify-content:center; min-height:420px; }
 .placeholder-msg {
   text-align:center; color:var(--text-dim); font-size:.8rem;
@@ -793,6 +803,10 @@ body.shake-screen .orb, body.shake-screen .grain { display:none; }
   padding:26px 26px 34px;
   border:1px solid #44474e;
   isolation:isolate;
+  opacity:0;
+  transform:translateY(24px) scale(.98);
+  pointer-events:none;
+  transition:opacity .4s cubic-bezier(.18,.8,.3,1), transform .45s cubic-bezier(.18,.8,.3,1);
 }
 .info-card:before { filter:blur(0) saturate(1.1); }
 .info-card .info-section { position:relative; }
@@ -1587,6 +1601,19 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
 .reduced-anim .cta-btn {
   transform:none !important;
 }
+.reduced-anim .result-card[data-ready] {
+  transition:none !important;
+  opacity:1 !important;
+  transform:none !important;
+}
+.reduced-anim .info-card {
+  transition:none !important;
+  transform:none !important;
+  opacity:1 !important;
+}
+.reduced-anim .info-card:not(.visible) {
+  display:none !important;
+}
 .reduced-anim .skeleton .skel-banner:before,
 .reduced-anim .skeleton .skel-avatar:before,
 .reduced-anim .skeleton .skel-line:before,
@@ -1601,26 +1628,9 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
   opacity:1;
   transform:translateY(0) scale(1);
   pointer-events:auto;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
 }
 .info-card.hiding {
-  opacity:0;
-  transform:translateY(24px) scale(.98);
   pointer-events:none;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
-}
-.info-card.visible {
-  display:block;
-  opacity:1;
-  transform:translateY(0) scale(1);
-  pointer-events:auto;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
-}
-.info-card.hiding {
-  opacity:0;
-  transform:translateY(24px) scale(.98);
-  pointer-events:none;
-  transition:opacity .45s cubic-bezier(.16,.8,.24,1), transform .45s cubic-bezier(.16,.8,.24,1);
 }
 
 .reduced-anim .orb,
