@@ -410,13 +410,15 @@ function showLoading(mode=currentMode) {
   setCard(skeletonCard(), 'loading-state', mode);
 }
 
-function showError(msg, detail='', mode=currentMode) {
+function showError(msg, detail='', mode=currentMode, opts={}) {
+  const allowHTML = Boolean(opts.allowHTML);
   let extra = '';
   if (detail) {
     const safe = escapeHTML(detail); // full text; scrolling handled via CSS
     extra = `\n<details class="err-details" open>\n  <summary><span class="err-icon" aria-hidden="true">!</span><span>Details</span><span class="chevron" aria-hidden="true"></span></summary>\n  <div class="collapsible-body">\n    <pre class="err-pre">${safe}</pre>\n  </div>\n</details>`;
   }
-  setCard(`<div class="error">${escapeHTML(msg)}${extra}</div>`, 'error-state', mode);
+  const message = allowHTML ? msg : escapeHTML(msg);
+  setCard(`<div class="error">${message}${extra}</div>`, 'error-state', mode);
   // Apply same animation enhancement to error details
   const d = document.querySelector('#resultCard .err-details');
   if (d) {
@@ -586,7 +588,22 @@ if (form && input) {
     } catch (err) {
       if (err.name === 'AbortError') return;
       if (reqToken !== currentReqToken || mode !== currentMode) return;
-      if (err.status === 404) { showError(config.notFound, err.body||'', mode); shakeScreen(); }
+      if (err.status === 404) {
+        let message = config.notFound;
+        let allowHTML = false;
+        const detail = err.body || '';
+        if (mode === 'guild' && detail) {
+          try {
+            const parsed = JSON.parse(detail);
+            if (parsed && parsed.code === 10004) {
+              message = `The bot isn’t in that server yet. Invite the worker bot before searching.<br><a class="err-link" href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener noreferrer">Invite the worker bot</a>`;
+              allowHTML = true;
+            }
+          } catch {}
+        }
+        showError(message, detail, mode, { allowHTML });
+        shakeScreen();
+      }
       else if (err.status === 429) showError('Rate limited (429).', err.body||'', mode);
       else if (err.status) showError(`HTTP ${err.status}`, err.body||'', mode);
       else showError('Network error.', '', mode);
