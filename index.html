@@ -46,9 +46,13 @@
   <main class="shell">
   <section class="panel panel--primary search-panel" data-animate data-anim-dir="left">
       <h2 class="panel-label">Lookup</h2>
+      <div class="search-mode" role="tablist" aria-label="Lookup type">
+        <button type="button" class="mode-btn is-active" role="tab" aria-selected="true" data-mode="user">User ID</button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" data-mode="guild">Guild ID</button>
+      </div>
       <form id="searchForm" class="search-form" autocomplete="off">
         <div class="search-field-wrap">
-          <input id="userId" type="text" placeholder="Enter Discord user ID (snowflake)" required spellcheck="false" inputmode="numeric">
+          <input id="searchId" type="text" placeholder="Enter Discord user ID (snowflake)" required spellcheck="false" inputmode="numeric" aria-describedby="lookupHelper">
           <div class="underline"></div>
         </div>
         <button type="submit" class="cta-btn">
@@ -56,10 +60,10 @@
           <span class="btn-label">Search</span>
         </button>
       </form>
-      <p class="helper-line">Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID</p>
+      <p class="helper-line" id="lookupHelper">Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID</p>
     </section>
 
-  <section id="userCard" class="panel panel--glass user-card empty" aria-live="polite" data-animate data-anim-dir="up">
+  <section id="resultCard" class="panel panel--glass result-card empty" aria-live="polite" data-animate data-anim-dir="up">
       <div class="placeholder-msg">
         <div class="placeholder-icon">🧪</div>
         <p>Enter an ID to fetch a public user profile.</p>
