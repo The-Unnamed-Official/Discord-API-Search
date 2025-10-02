@@ -766,6 +766,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   wireSettings();
   wireInfoPanel();
+  wireShortcutHints();
   activateNoScrollbar();
   enhanceDetailsAnimation();
 });
@@ -949,6 +950,75 @@ function wireInfoPanel() {
       infoFab.focus();
     }
   });
+}
+
+function wireShortcutHints() {
+  const panel = document.getElementById('shortcutHints');
+  if (!panel) return;
+
+  const list = panel.querySelector('#shortcutList');
+  const OPEN_CLASS = 'is-open';
+  let isOpen = false;
+
+  const applyState = open => {
+    if (isOpen === open) return;
+    isOpen = open;
+    panel.classList.toggle(OPEN_CLASS, open);
+    panel.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (list) {
+      list.setAttribute('aria-hidden', open ? 'false' : 'true');
+    }
+  };
+
+  const toggle = () => {
+    applyState(!isOpen);
+  };
+
+  const shouldSkip = target => {
+    if (!(target instanceof Element)) return false;
+    if (target.closest('#shortcutHints')) return false;
+    if (target.closest('input, textarea, select, button, [role="tab"], [role="button"], [contenteditable="true"], [contenteditable=""]')) {
+      return true;
+    }
+    return false;
+  };
+
+  panel.addEventListener('click', () => {
+    toggle();
+  });
+
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      toggle();
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      applyState(true);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      applyState(false);
+    }
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.defaultPrevented) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+    if (shouldSkip(event.target)) return;
+    if (event.key === 'ArrowRight') {
+      applyState(true);
+    } else {
+      applyState(false);
+    }
+  });
+
+  panel.setAttribute('tabindex', panel.getAttribute('tabindex') || '0');
+  if (list) {
+    list.setAttribute('aria-hidden', 'true');
+  }
+  panel.classList.remove(OPEN_CLASS);
+  panel.setAttribute('aria-expanded', 'false');
+  isOpen = false;
 }
 function wireSettings() {
   const fab = document.getElementById('settingsFab');
