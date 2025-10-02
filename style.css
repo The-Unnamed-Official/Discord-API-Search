@@ -1680,13 +1680,13 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
 /* Shortcut hints panel */
 .shortcut-hints {
   position:fixed;
-  left:10px;
+  left:0;
   top:50%;
-  transform:translateY(-50%);
+  transform:translate(calc(-100% + 22px), -50%);
   background:rgba(35,38,44,.75);
   backdrop-filter:blur(14px) saturate(160%);
   border:1px solid #353b44;
-  padding:14px 16px 16px;
+  padding:14px 28px 16px 16px;
   border-radius:18px;
   z-index:250;
   width:202px;
@@ -1694,7 +1694,32 @@ html.theme-transition, html.theme-transition * , html.theme-transition *:before,
   line-height:1.35;
   box-shadow:0 8px 28px -10px #000c, 0 0 0 1px #ffffff06 inset;
   color:var(--text-sub);
-  pointer-events:none;
+  pointer-events:auto;
+  cursor:pointer;
+  transition:transform var(--transition), box-shadow .35s;
+}
+.shortcut-hints.is-open {
+  transform:translate(0, -50%);
+}
+.shortcut-hints:focus-visible {
+  outline:2px solid var(--accent);
+  outline-offset:4px;
+}
+.shortcut-hints::after {
+  content:'›';
+  position:absolute;
+  top:50%;
+  right:10px;
+  transform:translateY(-50%);
+  font-size:.85rem;
+  color:var(--text-sub);
+  transition:transform var(--transition), color .35s;
+}
+.shortcut-hints.is-open::after {
+  content:'‹';
+}
+:root[data-theme="light"] .shortcut-hints:focus-visible {
+  outline-color:var(--accent-hover);
 }
 :root[data-theme="light"] .shortcut-hints {
   background:rgba(255,255,255,.75);
