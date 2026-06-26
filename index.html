@@ -1,162 +1,176 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Unofficial Discord ID Lookup</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="preconnect" href="https://cdn.discordapp.com">
-<link rel="stylesheet" href="style.css">
-<!-- Favicons (sequential sizes) -->
-<link rel="icon" type="image/png" sizes="32x32" href="resources/1112-favicon.png">
-<link rel="icon" type="image/png" sizes="64x64" href="resources/1113-favicon.png">
-<link rel="icon" type="image/png" sizes="128x128" href="resources/1114-favicon.png">
-<link rel="icon" type="image/png" sizes="256x256" href="resources/1115-favicon.png">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Unofficial Discord user and guild snowflake lookup powered by a token-safe proxy.">
+  <title>Discord API Search</title>
+  <link rel="preconnect" href="https://cdn.discordapp.com">
+  <link rel="preconnect" href="https://discord-api-search.bbrraaggee.workers.dev">
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="resources/1112-favicon.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="resources/1113-favicon.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="resources/1114-favicon.png">
+  <link rel="icon" type="image/png" sizes="256x256" href="resources/1115-favicon.png">
 </head>
 <body>
-  <div class="bg-decor">
-    <div class="orb orb-a"></div>
-    <div class="orb orb-b"></div>
-    <div class="grain"></div>
-  </div>
-
   <header class="topbar">
-    <div class="brand">
-  <span class="brand-icon"><img src="resources/48159-spyglass.png" width="32" alt="Search Icon"><img src="resources/9422-id.png" width="32" alt="ID Icon"></span>
-      <h1 class="brand-title">Unofficial Discord ID Lookup</h1>
-    </div>
-    <nav class="top-links">
-      <a class="nav-btn" href="https://discord.com/developers/docs/resources/user" target="_blank" rel="noopener">API</a>
+    <button class="brand" id="brandButton" type="button" aria-label="Animate Discord API Search logo">
+      <span class="brand-mark" id="brandMark" aria-hidden="true">
+        <img src="resources/48159-spyglass.png" alt="">
+        <img src="resources/9422-id.png" alt="">
+      </span>
+      <span class="brand-copy">
+        <span class="brand-title">Discord API Search</span>
+        <span class="brand-subtitle">Unofficial snowflake lookup</span>
+      </span>
+    </button>
+
+    <nav class="top-actions" aria-label="Primary">
+      <span class="version-pill" title="App and Discord REST API versions">v1 / API v10</span>
+      <a class="nav-btn" href="https://docs.discord.com/developers/reference#api-reference" target="_blank" rel="noopener">API Reference</a>
       <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source</a>
     </nav>
   </header>
 
-  
-  <div class="shortcut-hints" id="shortcutHints" aria-label="Keyboard shortcuts" role="button" tabindex="0" aria-expanded="false" aria-controls="shortcutList">
-    <ul id="shortcutList">
-      <li><kbd>Enter</kbd> Focus search</li>
-      <li><kbd>/</kbd> or <kbd>Ctrl+F</kbd> Focus search</li>
-      <li><kbd>T</kbd> Toggle theme</li>
-      <li><kbd>R</kbd> Reduced anim</li>
-      <li><kbd>H</kbd> Troubleshooting</li>
-      <li class="shortcut-sub" style="margin-left:1.5rem;"> <kbd>Alt+H+1</kbd> Copy & open <br>"No response"</li>
-      <li class="shortcut-sub" style="margin-left:1.5rem;"> <kbd>Alt+H+2</kbd> Copy & open <br>"Weird HTML"</li>
-    </ul>
-  </div>
-
-  <main class="shell">
-  <section class="panel panel--primary search-panel" data-animate data-anim-dir="left">
-      <h2 class="panel-label">Lookup</h2>
-      <div class="search-mode" role="tablist" aria-label="Lookup type">
-        <button type="button" class="mode-btn is-active" role="tab" aria-selected="true" data-mode="user">User ID</button>
-        <button type="button" class="mode-btn" role="tab" aria-selected="false" data-mode="guild">Guild ID</button>
+  <main class="layout">
+    <section class="panel search-panel" aria-labelledby="lookupHeading">
+      <div class="panel-heading">
+        <p class="eyebrow">Lookup</p>
+        <h1 id="lookupHeading">Search Discord public data</h1>
       </div>
-      <form id="searchForm" class="search-form" autocomplete="off">
-        <div class="search-field-wrap">
-          <input id="searchId" type="text" placeholder="Enter Discord user ID (snowflake)" required spellcheck="false" inputmode="numeric" aria-describedby="lookupHelper">
-          <div class="underline"></div>
-        </div>
-        <button type="submit" class="cta-btn">
-          <span class="btn-bg"></span>
-          <span class="btn-label">Search</span>
+
+      <div class="mode-tabs" role="tablist" aria-label="Lookup type">
+        <button type="button" class="mode-btn is-active" role="tab" aria-selected="true" data-mode="user">
+          <span aria-hidden="true" class="btn-icon">U</span>
+          User
         </button>
+        <button type="button" class="mode-btn" role="tab" aria-selected="false" data-mode="guild">
+          <span aria-hidden="true" class="btn-icon">G</span>
+          Guild
+        </button>
+      </div>
+
+      <form id="searchForm" class="search-form" autocomplete="off">
+        <label class="search-label" for="searchId">Discord snowflake ID</label>
+        <div class="search-row">
+          <input id="searchId" type="text" inputmode="numeric" spellcheck="false" required
+            placeholder="Enter a Discord user ID">
+          <button type="submit" class="primary-btn" id="searchButton">
+            <span aria-hidden="true" class="btn-icon">S</span>
+            Search
+          </button>
+        </div>
       </form>
-      <p class="helper-line" id="lookupHelper">Example: <code>80351110224678912</code> • Right‑click a user in Discord (Dev Mode) → Copy ID</p>
-    </section>
 
-  <section id="resultCard" class="panel panel--glass result-card empty" aria-live="polite" data-animate data-anim-dir="up">
-      <div class="placeholder-msg">
-        <div class="placeholder-icon">🧪</div>
-        <p>Enter an ID to fetch a public user profile.</p>
+      <div class="helper-stack">
+        <p id="lookupHelper">Paste a user snowflake. URLs and mentions are cleaned automatically.</p>
+        <div class="utility-row">
+          <button type="button" class="ghost-btn" data-action="clear-input">Clear</button>
+          <button type="button" class="ghost-btn" data-action="use-example">Try example</button>
+        </div>
       </div>
     </section>
 
-  <aside class="panel panel--info info-card" id="infoCard" data-animate data-anim-dir="right" aria-hidden="true">
-    <div class="info-header">
-        <h2 class="info-title">Help & Tips</h2>
+    <section id="resultCard" class="panel result-panel empty" aria-live="polite">
+      <div class="empty-state">
+        <span class="empty-glyph" aria-hidden="true">ID</span>
+        <h2>Ready for a lookup</h2>
+        <p>Search a user or guild ID to inspect public Discord API data, CDN resources, badges, and snowflake dates.</p>
+      </div>
+    </section>
+
+    <aside class="panel help-panel" id="helpPanel" aria-labelledby="helpHeading">
+      <div class="panel-heading compact">
+        <p class="eyebrow">Help</p>
+        <h2 id="helpHeading">Status, shortcuts, and fixes</h2>
       </div>
 
-      <div class="info-section">
-        <h3><span>How it works</span></h3>
-        <p class="info-text">
-          Uses a lightweight proxy Worker to call Discord’s <code>/users/{id}</code> and <code>/guilds/{id}</code> (with <code>with_counts=true</code>) endpoints.
-          Shows avatars, banners, public flags, creation dates, plus guild icons, member counts, features, and moderation metadata without exposing a bot token in the browser.
-        </p>
+      <div class="help-grid">
+        <div class="help-item">
+          <span class="status-dot ok" aria-hidden="true"></span>
+          <strong>200</strong>
+          <span>Record fetched</span>
+        </div>
+        <div class="help-item">
+          <span class="status-dot warn" aria-hidden="true"></span>
+          <strong>404</strong>
+          <span>Missing record or bot is not in guild</span>
+        </div>
+        <div class="help-item">
+          <span class="status-dot wait" aria-hidden="true"></span>
+          <strong>429</strong>
+          <span>Rate limited; retry after the timer</span>
+        </div>
+        <div class="help-item">
+          <span class="status-dot err" aria-hidden="true"></span>
+          <strong>5xx</strong>
+          <span>Proxy or Discord upstream issue</span>
+        </div>
       </div>
 
-      <div class="info-section">
-        <h3><span>Status Codes</span></h3>
-        <ul class="tip-list">
-          <li><span class="ti ti-ok"></span><strong>200</strong> Profile or guild snapshot fetched</li>
-          <li><span class="ti ti-miss"></span><strong>404</strong> Not found or bot missing from that guild</li>
-          <li><span class="ti ti-rate"></span><strong>429</strong> Rate limited</li>
-          <li><span class="ti ti-net"></span><strong>502+</strong> Upstream issues</li>
-        </ul>
-      </div>
-
-  <details class="info-details">
-        <summary tabindex="0">
-          <span class="summary-icon"><img src="resources/8377-staff-blue.png" width="24" alt="Troubleshooting Icon"></span>
-          <span>Troubleshooting</span>
+      <details class="help-details">
+        <summary>
+          <span>Actions</span>
           <span class="chevron" aria-hidden="true"></span>
         </summary>
-        <div class="collapsible-body">
-          <ul class="tip-list compact">
-            <li><span class="ti ti-net"></span>No response → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Trouble with No response">here</a></li>
-            <li><span class="ti ti-unauth"></span>Unknown Guild (10004) → Invite the worker bot <a href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener">here</a> then retry</li>
-            <li><span class="ti ti-refresh"></span>Weird HTML → Make an issue by Ctrl V / Paste <a href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener" class="issue-link" data-copy="Weird HTML error / Wrong Path / 404 No users found">here</a></li>
-            <li><span class="ti ti-rate"></span>Repeated 429 → pause a minute</li>
-          </ul>
+        <div class="details-body">
+          <button type="button" class="help-link" data-action="copy-issue" data-copy="Trouble with No response">Copy no response report</button>
+          <a class="help-link" href="https://github.com/The-Unnamed-Official/Discord-API-Search/issues/new" target="_blank" rel="noopener">Open issue</a>
+          <a class="help-link" href="https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8" target="_blank" rel="noopener">Invite worker bot</a>
         </div>
       </details>
+
+      <div class="shortcut-list" aria-label="Keyboard shortcuts">
+        <span><kbd>/</kbd> Focus</span>
+        <span><kbd>T</kbd> Theme</span>
+        <span><kbd>R</kbd> Motion</span>
+        <span><kbd>H</kbd> Help</span>
+      </div>
     </aside>
   </main>
 
-  <footer class="foot">
-    <div class="foot-left">Developed by The Unnamed</div>
-    <div class="foot-center">Prototype V0.4 • Discord branding belongs to Discord</div>
+  <div class="floating-actions" aria-label="Quick actions">
+    <button class="round-btn" type="button" id="helpFab" aria-controls="helpPanel" aria-expanded="true" title="Toggle help">
+      <span aria-hidden="true">?</span>
+    </button>
+    <button class="round-btn" type="button" id="settingsFab" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+      <img class="settings-icon" src="resources/1722-gear.svg" alt="" aria-hidden="true">
+    </button>
+  </div>
+
+  <section class="settings-panel" id="settingsPanel" role="dialog" aria-modal="false" aria-labelledby="settingsHeading" aria-hidden="true" tabindex="-1">
+    <h2 id="settingsHeading">Settings</h2>
+    <label class="switch-row" for="themeToggle">
+      <span>Light theme</span>
+      <input type="checkbox" id="themeToggle">
+      <span class="switch-ui" aria-hidden="true"></span>
+    </label>
+    <label class="switch-row" for="reduceAnimToggle">
+      <span>Reduced motion</span>
+      <input type="checkbox" id="reduceAnimToggle">
+      <span class="switch-ui" aria-hidden="true"></span>
+    </label>
+    <label class="switch-row" for="autoSearchToggle">
+      <span>Auto search</span>
+      <input type="checkbox" id="autoSearchToggle">
+      <span class="switch-ui" aria-hidden="true"></span>
+    </label>
+    <label class="switch-row" for="badgeLabelToggle">
+      <span>Badge labels</span>
+      <input type="checkbox" id="badgeLabelToggle">
+      <span class="switch-ui" aria-hidden="true"></span>
+    </label>
+  </section>
+
+  <div id="statusLive" class="status-live" role="status" aria-live="polite"></div>
+
+  <footer class="footer">
+    <span>Discord API Search v1</span>
+    <span>Made by <a href="http://discord.com/users/611204110955446301" target="_blank" rel="noopener noreferrer">The Unnamed</a></span>
+    <span>Discord assets and branding belong to Discord Inc.</span>
   </footer>
 
-  <div class="focus-ring-portal" aria-hidden="true"></div>
-  <!-- Settings floating button & panel -->
-  <div class="settings-root" id="settingsRoot">
-    <button class="settings-fab" id="settingsFab" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
-      <span class="gear" aria-hidden="true"></span>
-    </button>
-    <button class="settings-fab info-fab" id="infoFab" title="Help & Tips" aria-haspopup="true" aria-expanded="false" aria-controls="infoCard">
-      <img src="resources/70178-information.png" width="30" alt="Information Icon" style="vertical-align:middle;">
-    </button>
-    <div class="settings-panel"
-       id="settingsPanel"
-       role="dialog"
-       aria-modal="true"
-       tabindex="-1"
-       aria-labelledby="settingsHeading"
-       aria-describedby="settingsDesc">
-      <!-- Focus trap start -->
-      <div tabindex="0" class="focus-sentinel" data-sentinel="start"></div>
-
-      <h2 class="settings-heading" id="settingsHeading">Settings</h2>
-
-      <div class="settings-section">
-        <label class="reduce-anim-toggle" for="reduceAnimToggle">
-          <input type="checkbox" id="reduceAnimToggle" />
-          <span class="track"><span class="thumb"></span></span>
-          <span class="toggle-text">Reduced animations</span>
-        </label>
-      </div>
-      <div class="settings-hint small">Disables motion / shimmer / floating effects</div>
-      <div class="settings-section">
-        <label class="theme-toggle" for="themeToggle">
-          <input type="checkbox" id="themeToggle" />
-          <span class="track"><span class="thumb"></span></span>
-          <span class="toggle-text">Light mode</span>
-        </label>
-      </div>
-      <div class="settings-hint">Preference is saved locally</div>
-
-      <!-- Focus trap end -->
-      <div tabindex="0" class="focus-sentinel" data-sentinel="end"></div>
-  </div>
-<script src="script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>

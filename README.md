@@ -1,132 +1,126 @@
-# Discord User Search (Beta)
+# Discord API Search v1
 
-> First public **Beta** release. Core goal (look up a Discord user by ID and show public profile info) works end‑to‑end. Interface, proxy approach, and structure are **subject to change** while the project stabilizes.
+Unofficial static Discord snowflake lookup for public user and guild data. The browser talks to a lightweight Cloudflare Worker proxy, and the Worker talks to Discord REST API v10 so the bot token never ships to clients.
 
-## Overview
-A static GitHub Pages front‑end + a lightweight Cloudflare Worker proxy that fetches public Discord user and guild data (`/users/{id}`, `/guilds/{id}`) safely without exposing a bot token in the browser.
+## What's New In v1
 
-## Why a Proxy Now?
-Direct browser calls with a bot token were unreliable (CORS / security) and unsafe (token exposure). The Worker holds the secret token; the site calls the Worker’s `/api/users/<id>` endpoint. This keeps the repo public and the token private.
+- Current Discord REST API v10 references and Worker example.
+- Adaptive Discord CDN resources for avatars, banners, guild icons, avatar decorations, guild tag badges, and public badge icons.
+- Current official `public_flags` badge support from Discord's User object docs.
+- API-provided profile accent colors tint user cards, and guild banner colors tint guild cards when Discord returns them.
+- The header logo now plays a clean click animation instead of navigating.
+- Settings uses the local `resources/1722-gear.svg` asset.
+- Fresh responsive interface with working user/guild tabs, retry, clear, examples, settings, copy actions, raw JSON, theme, reduced motion, auto search, and badge label controls.
+- Guild feature inspection, member/presence counts, moderation metadata, vanity links, and bot invite guidance.
+- Encoding cleanup for previously corrupted UI text.
 
-## Features (Beta)
-- Discord‑inspired, animated UI with accessible reduced‑motion fallbacks.
-- User lookup by numeric snowflake ID.
-- Guild / server lookup by numeric snowflake ID with member counts, features, and metadata.
-- Avatar (static / animated) & banner (static / animated) preview with hover switching.
-- Derived account creation date from snowflake.
-- Public flag (badge) display (HypeSquad subset for now).
-- Skeleton shimmer loading + detailed error states (404, 429, generic HTTP, network).
-- Caching (session runtime) to avoid repeat fetches.
-- Worker proxy with CORS and simple path validation.
+## Features
 
-## Planned / Subject to Change
-- Additional public flags/badges.
-- Improved rate limit backoff.
-- Optional light theme & theme persistence.
-- More robust error surface (retry‑after countdown).
-- Expanded documentation & test automation.
+- User lookup by Discord snowflake ID.
+- Guild/server lookup by Discord snowflake ID with `with_counts=true`.
+- Avatar, banner, icon, splash, decoration, and badge rendering through Discord CDN resources.
+- Public badges from `public_flags`, plus forwarded badge arrays if Discord or the proxy returns actual badge entries.
+- Nitro, avatar decorations, nameplates, banners, collectibles, and primary guild tags are shown as API profile fields instead of being treated as badges.
+- Owner ID quick-search from guild results.
+- Snowflake creation dates and account/server age.
+- Copy buttons for IDs, metadata, and raw JSON.
+- Detailed error handling for 404, 429, network, and upstream/proxy failures.
+- Local settings for light theme, reduced motion, auto search, and badge labels.
 
 ## Architecture
-```
-GitHub Pages (static: index.html, style.css, script.js)
-           |
-           | HTTPS (no secrets)
-           v
-Cloudflare Worker (holds BOT_TOKEN)
-           |
-           v
-Discord REST API (https://discord.com/api/v10/users/{id})
+
+```text
+GitHub Pages static app
+  -> Cloudflare Worker proxy
+  -> Discord REST API v10
 ```
 
-## Quick Start (Local Clone)
-1. Clone repository.
-2. Open `index.html` in a modern browser – no build step.
-3. (Already configured) Ensure `API_BASE` in `script.js` points to your Worker if you fork.
+The frontend `API_BASE` lives in `script.js`:
 
-## Deploy (Your Own Fork)
-1. Create your Cloudflare Worker; add secret `BOT_TOKEN`.
-2. Use the Worker script from this repo (or copy README snippet below).
-3. Set `API_BASE` in `script.js` to your Worker base (without trailing slash).
-4. Commit & push.
-5. In GitHub repo: Settings → Pages → Deploy from `main` (root).
-6. Visit `https://<username>.github.io/<repo>/` and test a user or guild ID.
+```js
+const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
+```
+
+## Quick Start
+
+Open `index.html` in a modern browser. There is no build step.
 
 ## Worker Example
+
 ```js
+const DISCORD_API_VERSION = 10;
+const PROJECT_URL = 'https://github.com/The-Unnamed-Official/Discord-API-Search';
+const APP_VERSION = '1';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: cors() });
     }
+
     if (url.pathname === '/api/ping') {
-      return json({ ok: true, ts: Date.now() });
+      return json({ ok: true, api_version: DISCORD_API_VERSION, app_version: APP_VERSION, ts: Date.now() });
     }
 
     const userMatch = url.pathname.match(/^\/api\/users\/(\d{5,30})$/);
     const guildMatch = url.pathname.match(/^\/api\/guilds\/(\d{5,30})$/);
-    if (!userMatch && !guildMatch) {
-      return json({ error: 'Not found' }, 404);
-    }
-
+    if (!userMatch && !guildMatch) return json({ error: 'Not found' }, 404);
     if (!env.BOT_TOKEN) return json({ error: 'Server missing BOT_TOKEN' }, 500);
 
     const id = (userMatch || guildMatch)[1];
     const route = userMatch ? `users/${id}` : `guilds/${id}`;
     const query = guildMatch ? '?with_counts=true' : '';
+
     try {
-      const upstream = await fetch(`https://discord.com/api/v10/${route}${query}`, {
-        headers: { Authorization: `Bot ${env.BOT_TOKEN}` }
+      const upstream = await fetch(`https://discord.com/api/v${DISCORD_API_VERSION}/${route}${query}`, {
+        headers: {
+          Authorization: `Bot ${env.BOT_TOKEN}`,
+          'User-Agent': `DiscordBot (${PROJECT_URL}, ${APP_VERSION})`
+        }
       });
+
       const text = await upstream.text();
-      return new Response(text, {
-        status: upstream.status,
-        headers: { ...cors(), 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' }
-      });
+      const headers = {
+        ...cors(),
+        'Content-Type': upstream.headers.get('Content-Type') || 'application/json',
+        'Cache-Control': upstream.ok ? 'public, max-age=60' : 'no-store'
+      };
+
+      const retryAfter = upstream.headers.get('Retry-After');
+      if (retryAfter) headers['Retry-After'] = retryAfter;
+
+      return new Response(text, { status: upstream.status, headers });
     } catch {
       return json({ error: 'Upstream fetch failed' }, 502);
     }
   }
 };
+
 function cors() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type,Authorization'
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+    'Access-Control-Expose-Headers': 'Retry-After'
   };
 }
+
 function json(obj, status = 200) {
-  return new Response(JSON.stringify(obj), { status, headers: { ...cors(), 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { ...cors(), 'Content-Type': 'application/json' }
+  });
 }
 ```
 
-## Usage
-1. Get a user’s ID: Discord → Settings → Advanced → enable Developer Mode → Right‑click user → Copy ID.
-2. Paste the ID into the search field.
-3. View avatar, banner, badges, creation date.
+## Notes
 
-## Error Reference
-| Code | Meaning | Action |
-|------|---------|--------|
-| 404  | User not found | Verify ID |
-| 429  | Rate limited | Pause & retry later |
-| 5xx  | Upstream / proxy issue | Retry; check Worker logs |
-| Other | Generic HTTP code | Inspect details panel / console |
-
-## Troubleshooting
-- **Guild lookups require bot membership.** If a server search returns `Unknown Guild (10004)` or guidance to invite the worker bot, make sure the Worker’s bot account is actually a member of that guild before retrying the lookup.
-
-## Security Notes
-- Bot token never shipped to clients; only the Worker sees it.
-- Do not add query features that echo internal headers without sanitizing.
-- Regenerate your bot token immediately if it leaks.
-
-## Contributing
-Issues & PRs welcome (UI polish, additional badges, error improvements). Expect breaking changes while in Beta.
+- Discord API v10 is the current available REST API version in Discord's official API versioning table.
+- Guild lookups require the Worker bot to be in the target guild. A `10004 Unknown Guild` response usually means the bot needs to be invited.
+- Discord IDs are snowflakes. The app derives creation time locally from the snowflake timestamp.
 
 ## License
-MIT (excluding Discord assets & trademarks). Discord branding belongs to Discord Inc.
 
----
-
-Beta Status: APIs and UI structure may shift; pin a commit if you rely on current behavior.
+MIT for this app's code. Discord assets, resources, and branding belong to Discord Inc.
