@@ -15,8 +15,8 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="./" aria-label="Discord API Search home">
-      <span class="brand-mark" aria-hidden="true">
+    <button class="brand" id="brandButton" type="button" aria-label="Animate Discord API Search logo">
+      <span class="brand-mark" id="brandMark" aria-hidden="true">
         <img src="resources/48159-spyglass.png" alt="">
         <img src="resources/9422-id.png" alt="">
       </span>
@@ -24,10 +24,10 @@
         <span class="brand-title">Discord API Search</span>
         <span class="brand-subtitle">Unofficial snowflake lookup</span>
       </span>
-    </a>
+    </button>
 
     <nav class="top-actions" aria-label="Primary">
-      <span class="version-pill" title="App and Discord REST API versions">v0.7 / API v10</span>
+      <span class="version-pill" title="App and Discord REST API versions">v1 / API v10</span>
       <a class="nav-btn" href="https://docs.discord.com/developers/reference#api-reference" target="_blank" rel="noopener">API Reference</a>
       <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source</a>
     </nav>
@@ -135,7 +135,7 @@
       <span aria-hidden="true">?</span>
     </button>
     <button class="round-btn" type="button" id="settingsFab" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
-      <span aria-hidden="true">*</span>
+      <img class="settings-icon" src="resources/1722-gear.svg" alt="" aria-hidden="true">
     </button>
   </div>
 
@@ -166,7 +166,7 @@
   <div id="statusLive" class="status-live" role="status" aria-live="polite"></div>
 
   <footer class="footer">
-    <span>Discord API Search v0.7</span>
+    <span>Discord API Search v1</span>
     <span>Made by <a href="http://discord.com/users/611204110955446301" target="_blank" rel="noopener noreferrer">The Unnamed</a></span>
     <span>Discord assets and branding belong to Discord Inc.</span>
   </footer>

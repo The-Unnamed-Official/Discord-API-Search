@@ -102,7 +102,13 @@ a {
   align-items: center;
   gap: 12px;
   min-width: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
   text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
 }
 
 .brand-mark {
@@ -111,6 +117,22 @@ a {
   width: 46px;
   height: 36px;
   flex: 0 0 46px;
+  border-radius: var(--radius);
+  isolation: isolate;
+}
+
+.brand-mark::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  z-index: -1;
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(88, 101, 242, .38), transparent 58%),
+    radial-gradient(circle at 75% 65%, rgba(87, 242, 135, .32), transparent 60%);
+  opacity: 0;
+  transform: scale(.65);
+  filter: blur(8px);
 }
 
 .brand-mark img {
@@ -130,6 +152,26 @@ a {
 .brand-mark img:last-child {
   right: 0;
   transform: rotate(8deg);
+}
+
+.brand:hover .brand-mark img:first-child {
+  transform: translateX(-2px) rotate(-12deg);
+}
+
+.brand:hover .brand-mark img:last-child {
+  transform: translateX(2px) rotate(12deg);
+}
+
+.brand-mark.logo-burst::before {
+  animation: logoGlow .8s cubic-bezier(.16, .8, .24, 1);
+}
+
+.brand-mark.logo-burst img:first-child {
+  animation: logoSpyglass .8s cubic-bezier(.16, .8, .24, 1);
+}
+
+.brand-mark.logo-burst img:last-child {
+  animation: logoIdCard .8s cubic-bezier(.16, .8, .24, 1);
 }
 
 .brand-copy {
@@ -454,12 +496,17 @@ h2 {
   display: grid;
   gap: 18px;
   padding: 0 22px 22px;
+  --profile-accent: var(--brand);
+  --profile-accent-rgb: 88, 101, 242;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(var(--profile-accent-rgb), .20), transparent 34%),
+    linear-gradient(180deg, rgba(var(--profile-accent-rgb), .08), transparent 260px);
 }
 
 .media-banner {
   height: 190px;
   margin: 0 -22px;
-  background-color: var(--panel-2);
+  background-color: var(--profile-accent, var(--panel-2));
   background-size: cover;
   background-position: center;
   border-bottom: 1px solid var(--line);
@@ -470,7 +517,9 @@ h2 {
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(0, 0, 0, .02), rgba(0, 0, 0, .34));
+  background:
+    linear-gradient(180deg, rgba(var(--profile-accent-rgb), .15), rgba(0, 0, 0, .42)),
+    radial-gradient(circle at 16% 18%, rgba(255, 255, 255, .16), transparent 28%);
 }
 
 .identity-block {
@@ -1025,6 +1074,7 @@ kbd {
 }
 
 .round-btn {
+  position: relative;
   width: 48px;
   height: 48px;
   border: 1px solid var(--line);
@@ -1037,6 +1087,27 @@ kbd {
   font-weight: 900;
   cursor: pointer;
   box-shadow: var(--shadow);
+}
+
+.round-btn .settings-icon {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 25px;
+  height: 25px;
+  display: block;
+  filter: invert(1) drop-shadow(0 4px 10px rgba(0, 0, 0, .24));
+  transform: translate(calc(-50% + 1px), -50%);
+  transform-origin: center;
+  transition: transform .22s ease;
+}
+
+:root[data-theme="light"] .round-btn .settings-icon {
+  filter: invert(.18) drop-shadow(0 4px 10px rgba(24, 34, 48, .12));
+}
+
+.round-btn:hover .settings-icon {
+  transform: translate(calc(-50% + 1px), -50%) rotate(28deg);
 }
 
 .round-btn:hover {
@@ -1211,6 +1282,51 @@ kbd {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes logoGlow {
+  0% {
+    opacity: 0;
+    transform: scale(.65);
+  }
+  42% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.22);
+  }
+}
+
+@keyframes logoSpyglass {
+  0% {
+    transform: translateX(0) rotate(-8deg) scale(1);
+  }
+  38% {
+    transform: translateX(-8px) translateY(-3px) rotate(-22deg) scale(1.08);
+  }
+  70% {
+    transform: translateX(3px) translateY(1px) rotate(-2deg) scale(.98);
+  }
+  100% {
+    transform: translateX(0) rotate(-8deg) scale(1);
+  }
+}
+
+@keyframes logoIdCard {
+  0% {
+    transform: translateX(0) rotate(8deg) scale(1);
+  }
+  38% {
+    transform: translateX(8px) translateY(3px) rotate(22deg) scale(1.08);
+  }
+  70% {
+    transform: translateX(-3px) translateY(-1px) rotate(2deg) scale(.98);
+  }
+  100% {
+    transform: translateX(0) rotate(8deg) scale(1);
   }
 }
 

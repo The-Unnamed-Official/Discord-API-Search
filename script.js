@@ -1,4 +1,4 @@
-const APP_VERSION = 'v0.7';
+const APP_VERSION = 'v1';
 const DISCORD_API_VERSION = 10;
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
@@ -202,6 +202,31 @@ function formatHexColor(value) {
   return `#${number.toString(16).padStart(6, '0')}`;
 }
 
+function normalizeApiColor(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'number') return formatHexColor(value);
+  const trimmed = String(value).trim();
+  const match = trimmed.match(/^#?([0-9a-f]{6})$/i);
+  return match ? `#${match[1].toLowerCase()}` : '';
+}
+
+function hexToRgbTriplet(hex) {
+  const normalized = normalizeApiColor(hex);
+  if (!normalized) return '88, 101, 242';
+  const value = normalized.slice(1);
+  return [
+    parseInt(value.slice(0, 2), 16),
+    parseInt(value.slice(2, 4), 16),
+    parseInt(value.slice(4, 6), 16)
+  ].join(', ');
+}
+
+function profileAccentStyle(color) {
+  const accent = normalizeApiColor(color);
+  if (!accent) return '';
+  return ` style="--profile-accent:${escapeAttr(accent)}; --profile-accent-rgb:${hexToRgbTriplet(accent)};"`;
+}
+
 function formatLocale(locale) {
   if (!locale) return 'Unknown';
   const normalized = String(locale).replace('_', '-');
@@ -309,7 +334,7 @@ function getUserAvatar(user) {
 
 function getUserBanner(user) {
   if (user.banner) return cdnAsset('banners', user.id, user.banner, 1024);
-  const accent = formatHexColor(user.accent_color);
+  const accent = normalizeApiColor(user.accent_color);
   return {
     static: accent || fallbackGradient(user.id),
     animated: '',
@@ -359,6 +384,17 @@ function getGuildBanner(guild) {
   if (guild.banner) return cdnAsset('banners', guild.id, guild.banner, 1024);
   if (guild.discovery_splash) return cdnAsset('discovery-splashes', guild.id, guild.discovery_splash, 1024, false);
   if (guild.splash) return cdnAsset('splashes', guild.id, guild.splash, 1024, false);
+  const colorSource = guild.banner_color != null && guild.banner_color !== '' ? guild.banner_color : guild.accent_color;
+  const color = normalizeApiColor(colorSource);
+  if (color) {
+    return {
+      static: color,
+      animated: '',
+      original: '',
+      isAnimated: false,
+      isColor: true
+    };
+  }
   return {
     static: fallbackGradient(guild.id),
     animated: '',
@@ -542,7 +578,7 @@ function renderUserCard(user) {
   const created = snowflakeToDate(user.id);
   const displayName = user.global_name || user.username || 'Unknown user';
   const tag = user.discriminator && user.discriminator !== '0' ? `${user.username}#${user.discriminator}` : `@${user.username}`;
-  const accent = formatHexColor(user.accent_color);
+  const accent = normalizeApiColor(user.accent_color);
   const flags = user.public_flags ?? user.flags ?? 0;
   const actions = [
     { label: 'Copy ID', action: 'copy', copy: user.id },
@@ -552,7 +588,7 @@ function renderUserCard(user) {
   ];
 
   return `
-    <article class="profile-card">
+    <article class="profile-card"${profileAccentStyle(accent)}>
       <div class="media-banner" style="${bannerStyle(banner)}"
         ${banner.animated ? `data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
@@ -612,6 +648,8 @@ function renderFeaturePill(feature, active = false) {
 function renderGuildCard(guild) {
   const icon = getGuildIcon(guild);
   const banner = getGuildBanner(guild);
+  const accentSource = guild.banner_color != null && guild.banner_color !== '' ? guild.banner_color : guild.accent_color;
+  const accent = normalizeApiColor(accentSource);
   const created = snowflakeToDate(guild.id);
   const features = Array.isArray(guild.features) ? guild.features.slice().sort() : [];
   const firstFeature = features[0] || '';
@@ -630,7 +668,7 @@ function renderGuildCard(guild) {
   ];
 
   return `
-    <article class="profile-card guild-profile">
+    <article class="profile-card guild-profile"${profileAccentStyle(accent)}>
       <div class="media-banner" style="${bannerStyle(banner)}"
         ${banner.animated ? `data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
@@ -1081,6 +1119,14 @@ function bindEvents() {
 
   $('#helpFab')?.addEventListener('click', () => toggleHelp());
   $('#settingsFab')?.addEventListener('click', () => toggleSettings());
+  $('#brandButton')?.addEventListener('click', () => {
+    const mark = $('#brandMark');
+    if (!mark) return;
+    mark.classList.remove('logo-burst');
+    void mark.offsetWidth;
+    mark.classList.add('logo-burst');
+    announce('Logo animation played', 'info');
+  });
 
   $('#themeToggle')?.addEventListener('change', event => {
     state.settings.theme = event.target.checked ? 'light' : 'dark';

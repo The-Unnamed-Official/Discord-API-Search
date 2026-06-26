@@ -1,12 +1,15 @@
-# Discord API Search v0.7
+# Discord API Search v1
 
 Unofficial static Discord snowflake lookup for public user and guild data. The browser talks to a lightweight Cloudflare Worker proxy, and the Worker talks to Discord REST API v10 so the bot token never ships to clients.
 
-## What's New In v0.7
+## What's New In v1
 
 - Current Discord REST API v10 references and Worker example.
 - Adaptive Discord CDN resources for avatars, banners, guild icons, avatar decorations, guild tag badges, and public badge icons.
 - Current official `public_flags` badge support from Discord's User object docs.
+- API-provided profile accent colors tint user cards, and guild banner colors tint guild cards when Discord returns them.
+- The header logo now plays a clean click animation instead of navigating.
+- Settings uses the local `resources/1722-gear.svg` asset.
 - Fresh responsive interface with working user/guild tabs, retry, clear, examples, settings, copy actions, raw JSON, theme, reduced motion, auto search, and badge label controls.
 - Guild feature inspection, member/presence counts, moderation metadata, vanity links, and bot invite guidance.
 - Encoding cleanup for previously corrupted UI text.
@@ -47,7 +50,7 @@ Open `index.html` in a modern browser. There is no build step.
 ```js
 const DISCORD_API_VERSION = 10;
 const PROJECT_URL = 'https://github.com/The-Unnamed-Official/Discord-API-Search';
-const APP_VERSION = '0.7';
+const APP_VERSION = '1';
 
 export default {
   async fetch(request, env) {
