@@ -1,9 +1,10 @@
-const APP_VERSION = 'v1';
+const APP_VERSION = 'v1.1';
 const DISCORD_API_VERSION = 10;
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const BOT_INVITE_URL = 'https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const SETTINGS_VERSION = 2;
 
 const EXAMPLES = {
   user: '611204110955446301',
@@ -19,11 +20,13 @@ const state = {
     theme: 'dark',
     reduceMotion: false,
     autoSearch: true,
-    badgeLabels: true
-  }
+    badgeLabels: false
+  },
+  avatarMotionCleanup: null
 };
 
 const cache = new Map();
+const guildTagCache = new Map();
 
 const MODE_CONFIG = {
   user: {
@@ -52,7 +55,7 @@ const BADGES = [
   { bit: 1n << 6n, code: 'BRAVERY', name: 'House Bravery Member', hash: '8a88d63823d8a71cd5e390baa45efa02', fallback: 'resources/7158-bravery.png' },
   { bit: 1n << 7n, code: 'BRILLIANCE', name: 'House Brilliance Member', hash: '011940fd013da3f7fb926e4a1cd2e618', fallback: 'resources/7156-brilliance.png' },
   { bit: 1n << 8n, code: 'BALANCE', name: 'House Balance Member', hash: '3aa41de486fa12454c3761e8e223442e.png', fallback: 'resources/7157-balance.png' },
-  { bit: 1n << 9n, code: 'NITRO', name: 'Early Nitro Supporter', hash: '7060786766c9c840eb3019e725d2b358' },
+  { bit: 1n << 9n, code: 'SUPPORTER', name: 'Early Supporter', hash: '7060786766c9c840eb3019e725d2b358' },
   { bit: 1n << 10n, code: 'TEAM', name: 'Team User' },
   { bit: 1n << 14n, code: 'BUG 2', name: 'Bug Hunter Level 2', hash: '848f79194d4be5ff5f81505cbd0ce1e6' },
   { bit: 1n << 16n, code: 'BOT', name: 'Verified Bot' },
@@ -61,6 +64,14 @@ const BADGES = [
   { bit: 1n << 19n, code: 'HTTP', name: 'HTTP Interactions Bot' },
   { bit: 1n << 22n, code: 'ACTIVE', name: 'Active Developer', hash: '6bdc42827a38498929a4920da12695d9' }
 ];
+
+const NITRO_BADGE = {
+  id: 'nitro',
+  code: 'NITRO',
+  name: 'Discord Nitro',
+  hash: '2ba85e8026a8614b640c2837bcdfe21b',
+  kind: 'nitro'
+};
 
 const FEATURE_DESCRIPTIONS = {
   ACTIVITIES_ALPHA: 'Early access flag for Discord Activities support in this guild.',
@@ -249,7 +260,8 @@ function formatFeatureName(feature) {
 }
 
 function formatPremiumType(type) {
-  return ['None', 'Nitro Classic', 'Nitro', 'Nitro Basic'][Number(type)] || 'Unknown';
+  if (type == null || type === '') return 'Not returned';
+  return ['None or unavailable', 'Nitro Classic', 'Discord Nitro', 'Nitro Basic'][Number(type)] || 'Unknown';
 }
 
 function formatVerificationLevel(level) {
@@ -350,12 +362,90 @@ function getAvatarDecoration(user) {
   return `https://cdn.discordapp.com/avatar-decoration-presets/${asset}.png?size=160`;
 }
 
-function getPrimaryGuildBadge(user) {
-  const guild = user.primary_guild;
-  if (!guild || !guild.identity_enabled || !guild.identity_guild_id || !guild.badge) return null;
+function getPrimaryGuildIdentity(user) {
+  if (!user || typeof user !== 'object') return null;
+  return user.primary_guild || user.clan || null;
+}
+
+function rememberPrimaryGuildTag(user) {
+  const identity = getPrimaryGuildIdentity(user);
+  if (!identity?.identity_enabled || !identity.identity_guild_id || !identity.tag) return null;
+  const tag = {
+    guildId: String(identity.identity_guild_id),
+    tag: String(identity.tag),
+    badge: identity.badge ? String(identity.badge) : ''
+  };
+  guildTagCache.set(tag.guildId, tag);
+  return tag;
+}
+
+function getGuildTagData(guild) {
+  if (!guild?.id) return null;
+  const candidates = [
+    guild.guild_tag,
+    guild.tag_data,
+    guild.guild_profile,
+    guild.profile,
+    guild.identity,
+    guild.primary_guild,
+    guild
+  ].filter(value => value && typeof value === 'object');
+  const source = candidates.find(value => value.tag || value.guild_tag || value.identity_tag);
+  const cached = guildTagCache.get(String(guild.id));
+  const tag = source?.tag || source?.guild_tag || source?.identity_tag || cached?.tag;
+  if (!tag) return null;
   return {
-    tag: guild.tag || 'TAG',
-    url: `https://cdn.discordapp.com/guild-tag-badges/${guild.identity_guild_id}/${guild.badge}.png?size=32`
+    guildId: String(guild.id),
+    tag: String(tag),
+    badge: String(source?.badge || source?.badge_hash || source?.guild_tag_badge || cached?.badge || '')
+  };
+}
+
+function getGuildTagBadge(guild) {
+  const data = getGuildTagData(guild);
+  if (!data) return null;
+  return {
+    id: `guild-tag:${data.guildId}`,
+    code: data.tag,
+    name: data.tag,
+    src: data.badge ? `https://cdn.discordapp.com/guild-tag-badges/${data.guildId}/${data.badge}.png?size=64` : '',
+    kind: 'server',
+    tag: data.tag
+  };
+}
+
+function getPrimaryGuildBadge(user, guildDetails = null) {
+  const guild = getPrimaryGuildIdentity(user);
+  if (!guild || !guild.identity_enabled || !guild.identity_guild_id || !guild.badge) return null;
+  rememberPrimaryGuildTag(user);
+  const tag = guild.tag || 'TAG';
+  return {
+    id: `primary-guild:${guild.identity_guild_id}`,
+    code: tag,
+    name: guildDetails?.name || tag,
+    detail: guildDetails?.name ? tag : '',
+    src: `https://cdn.discordapp.com/guild-tag-badges/${guild.identity_guild_id}/${guild.badge}.png?size=64`,
+    kind: 'server',
+    guildId: guild.identity_guild_id,
+    tag
+  };
+}
+
+function getNitroBadge(user) {
+  if (!user || typeof user !== 'object') return null;
+  const premiumType = Number(user.premium_type);
+  const hasTypedPremium = Number.isInteger(premiumType) && premiumType > 0;
+  const hasExplicitPremium = user.nitro === true
+    || user.premium === true
+    || user.is_nitro === true
+    || Boolean(user.premium_since || user.nitro_since);
+  if (!hasTypedPremium && !hasExplicitPremium) return null;
+
+  const name = hasTypedPremium ? formatPremiumType(premiumType) : NITRO_BADGE.name;
+  return {
+    ...NITRO_BADGE,
+    name,
+    detail: user.premium_since || user.nitro_since ? `Subscriber since ${user.premium_since || user.nitro_since}` : 'Premium subscription'
   };
 }
 
@@ -417,27 +507,66 @@ function renderBadge(badge) {
   const icon = src
     ? `<img class="badge-img" src="${escapeAttr(src)}" alt="" loading="lazy" draggable="false"${fallback}>`
     : `<span class="badge-fallback" aria-hidden="true">${escapeHTML(badge.code.slice(0, 4))}</span>`;
+  const detail = badge.detail ? `<span class="badge-detail">${escapeHTML(badge.detail)}</span>` : '';
+  const kind = badge.kind ? ` badge--${String(badge.kind).replace(/[^a-z0-9_-]/gi, '')}` : '';
+  const title = badge.detail ? `${badge.name} — ${badge.detail}` : badge.name;
   return `
-    <span class="badge" title="${escapeAttr(badge.name)}" aria-label="${escapeAttr(badge.name)}">
+    <span class="badge${kind}" role="img" aria-label="${escapeAttr(title)}" tabindex="0">
       <span class="badge-icon">${icon}</span>
-      <span class="badge-label">${escapeHTML(badge.name)}</span>
+      <span class="badge-copy">
+        <span class="badge-label">${escapeHTML(badge.name)}</span>
+        ${detail}
+      </span>
     </span>
   `;
+}
+
+function forwardedBadgeName(id, fallback = '') {
+  const normalized = String(id || '').toLowerCase();
+  if (normalized === 'premium' || normalized.includes('nitro')) return 'Discord Nitro';
+  if (normalized.startsWith('guild_booster')) return 'Server Booster';
+  if (normalized === 'legacy_username') return 'Originally known as';
+  if (normalized === 'quest_completed') return 'Quest completed';
+  if (fallback) return fallback;
+  return formatFeatureName(normalized || 'profile badge');
+}
+
+function isNitroBadgeSignal(value) {
+  const normalized = String(value || '').toLowerCase();
+  if (/early[^a-z0-9]*(?:nitro[^a-z0-9]*)?supporter/.test(normalized)) return false;
+  return /nitro|premium/.test(normalized);
 }
 
 function normalizeIncomingBadge(raw, index) {
   if (!raw) return null;
   if (typeof raw === 'string') {
-    return { code: raw.slice(0, 6).toUpperCase(), name: raw };
+    const kind = isNitroBadgeSignal(raw) ? 'nitro' : 'forwarded';
+    return {
+      id: raw,
+      code: raw.slice(0, 6).toUpperCase(),
+      name: forwardedBadgeName(raw),
+      hash: kind === 'nitro' ? NITRO_BADGE.hash : '',
+      kind
+    };
   }
   if (typeof raw !== 'object') return null;
-  const name = raw.name || raw.label || raw.description || raw.id || raw.badge || `Profile Badge ${index + 1}`;
-  const icon = raw.icon_url || raw.image_url || raw.url || raw.src || raw.icon || '';
-  const src = typeof icon === 'string' && icon.startsWith('http') ? icon : '';
+  const id = raw.id || raw.badge || raw.code || `profile-badge-${index + 1}`;
+  const fallbackName = raw.name || raw.label || '';
+  const name = forwardedBadgeName(id, fallbackName || raw.description || `Profile Badge ${index + 1}`);
+  const description = raw.description && raw.description !== name ? raw.description : '';
+  const icon = raw.icon_url || raw.image_url || raw.url || raw.src || raw.icon || raw.icon_hash || '';
+  const iconValue = typeof icon === 'string' ? icon.trim() : '';
+  const src = /^https?:\/\//i.test(iconValue)
+    ? iconValue
+    : /^[a-f0-9]{32}(?:\.png)?$/i.test(iconValue) ? badgeIconUrl(iconValue) : '';
+  const kind = isNitroBadgeSignal(`${id} ${name}`) ? 'nitro' : 'forwarded';
   return {
-    code: String(raw.id || raw.code || name).slice(0, 6).toUpperCase(),
+    id: String(id),
+    code: String(raw.code || id || name).slice(0, 6).toUpperCase(),
     name,
-    src
+    detail: description,
+    src: src || (kind === 'nitro' ? badgeIconUrl(NITRO_BADGE.hash) : ''),
+    kind
   };
 }
 
@@ -455,21 +584,60 @@ function renderForwardedBadges(user) {
   return extras;
 }
 
-function renderBadges(flags, user) {
-  const bitset = toBigIntFlag(flags);
-  const badges = BADGES.filter(badge => (bitset & badge.bit) === badge.bit);
-  const forwardedBadges = renderForwardedBadges(user);
+function getPremiumSummary(user) {
+  const explicit = getNitroBadge(user);
+  if (explicit) return explicit.name;
+  const forwarded = renderForwardedBadges(user).find(badge => badgeDedupeKey(badge) === 'nitro');
+  if (forwarded) return forwarded.name;
+  return formatPremiumType(user?.premium_type);
+}
 
-  if (!badges.length && !forwardedBadges.length) {
+function badgeDedupeKey(badge) {
+  const source = `${badge.id || ''} ${badge.code || ''} ${badge.name || ''}`.toLowerCase();
+  if (/early[^a-z0-9]*(?:nitro[^a-z0-9]*)?supporter/.test(source)) return 'early-supporter';
+  if (isNitroBadgeSignal(source)) return 'nitro';
+  if (/active[^a-z0-9]*developer/.test(source)) return 'active-developer';
+  const name = String(badge.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return name || source.replace(/[^a-z0-9]/g, '') || badge.src || 'profile-badge';
+}
+
+function dedupeBadges(badges) {
+  const seen = new Set();
+  return badges.filter(badge => {
+    if (!badge) return false;
+    const key = badgeDedupeKey(badge);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function renderBadges(flags, user, guildDetails = null) {
+  const bitset = toBigIntFlag(flags);
+  const badges = BADGES
+    .filter(badge => (bitset & badge.bit) === badge.bit)
+    .map(badge => ({ ...badge, id: badge.code.toLowerCase(), kind: 'public' }));
+  const forwardedBadges = renderForwardedBadges(user);
+  const accountBadges = [
+    getPrimaryGuildBadge(user, guildDetails),
+    getNitroBadge(user),
+    user?.bot ? { id: 'bot-account', code: 'BOT', name: 'Bot account', kind: 'account' } : null,
+    user?.system ? { id: 'system-account', code: 'SYS', name: 'Discord system user', kind: 'account' } : null
+  ];
+  const allBadges = dedupeBadges([...accountBadges, ...badges, ...forwardedBadges]);
+
+  if (!allBadges.length) {
     return '<span class="muted-text">No public badges returned</span>';
   }
-  return `${badges.map(renderBadge).join('')}${forwardedBadges.map(renderBadge).join('')}`;
+  return allBadges.map(renderBadge).join('');
 }
 
 function renderActions(actions) {
+  const visibleActions = actions.filter(Boolean);
+  if (!visibleActions.length) return '';
   return `
     <div class="action-row">
-      ${actions.filter(Boolean).map(action => {
+      ${visibleActions.map(action => {
         if (action.href) {
           return `<a class="action-btn" href="${escapeAttr(action.href)}" target="_blank" rel="noopener">${escapeHTML(action.label)}</a>`;
         }
@@ -493,22 +661,26 @@ function renderMetric(label, value, extraClass = '') {
 function renderMeta(label, value, copy = '') {
   const copyAttr = copy ? ` data-action="copy" data-copy="${escapeAttr(copy)}"` : '';
   const asButton = Boolean(copy);
-  const inner = `<span class="meta-label">${escapeHTML(label)}</span><span class="meta-value">${escapeHTML(value)}</span>`;
+  const color = label === 'Accent color' ? normalizeApiColor(value) : '';
+  const colorClass = color ? ' meta-cell--accent' : '';
+  const colorStyle = color ? ` style="--shown-accent:${escapeAttr(color)}"` : '';
+  const swatch = color ? '<span class="color-swatch" aria-hidden="true"></span>' : '';
+  const inner = `<span class="meta-label">${escapeHTML(label)}</span><span class="meta-value">${swatch}${escapeHTML(value)}</span>`;
   return asButton
-    ? `<button type="button" class="meta-cell copyable"${copyAttr}>${inner}</button>`
-    : `<div class="meta-cell">${inner}</div>`;
+    ? `<button type="button" class="meta-cell copyable${colorClass}" title="Click to copy ${escapeAttr(label)}"${colorStyle}${copyAttr}>${inner}</button>`
+    : `<div class="meta-cell${colorClass}"${colorStyle}>${inner}</div>`;
 }
 
 function renderOwnerMeta(ownerId) {
   if (!ownerId) return renderMeta('Owner ID', 'Not returned');
   return `
     <div class="meta-cell meta-cell--split">
-      <div class="meta-copy">
+      <button type="button" class="meta-copy owner-copy copyable" title="Click to copy Owner ID"
+        data-action="copy" data-copy="${escapeAttr(ownerId)}">
         <span class="meta-label">Owner ID</span>
         <span class="meta-value">${escapeHTML(ownerId)}</span>
-      </div>
+      </button>
       <div class="meta-actions">
-        <button type="button" class="mini-btn" data-action="copy" data-copy="${escapeAttr(ownerId)}">Copy</button>
         <button type="button" class="mini-btn mini-btn--primary" data-action="search-user" data-user-id="${escapeAttr(ownerId)}">Search</button>
       </div>
     </div>
@@ -516,35 +688,31 @@ function renderOwnerMeta(ownerId) {
 }
 
 function renderApiField(label, value, copy = '') {
-  const copyButton = copy
-    ? `<button type="button" class="mini-btn" data-action="copy" data-copy="${escapeAttr(copy)}">Copy</button>`
-    : '';
-  return `
-    <div class="api-field">
-      <div>
+  const inner = `
+      <span class="api-field-copy">
         <span class="meta-label">${escapeHTML(label)}</span>
         <span class="meta-value">${escapeHTML(value)}</span>
-      </div>
-      ${copyButton}
-    </div>
-  `;
+      </span>`;
+  return copy
+    ? `<button type="button" class="api-field copyable" title="Click to copy ${escapeAttr(label)}" data-action="copy" data-copy="${escapeAttr(copy)}">${inner}</button>`
+    : `<div class="api-field">${inner}</div>`;
 }
 
-function renderUserApiDetails(user) {
+function renderUserApiDetails(user, guildDetails = null) {
   const decoration = user.avatar_decoration_data;
   const nameplate = getCollectibleNameplate(user);
-  const primaryGuild = getPrimaryGuildBadge(user);
+  const primaryGuild = getPrimaryGuildBadge(user, guildDetails);
   const collectibleKeys = user.collectibles && typeof user.collectibles === 'object'
     ? Object.keys(user.collectibles)
     : [];
   const lines = [
-    renderApiField('Premium type', formatPremiumType(user.premium_type)),
+    renderApiField('Nitro / premium type', getPremiumSummary(user)),
     renderApiField('Profile banner', user.banner ? 'Returned by API' : 'Not returned'),
     renderApiField('Accent color', formatHexColor(user.accent_color) || 'Not returned', formatHexColor(user.accent_color)),
     renderApiField('Avatar decoration', decoration ? `SKU ${decoration.sku_id || 'unknown'}` : 'Not returned', decoration?.asset || ''),
     renderApiField('Nameplate', nameplate ? `${nameplate.name || 'Nameplate'}${nameplate.skuId ? ` - SKU ${nameplate.skuId}` : ''}` : 'Not returned', nameplate?.skuId || ''),
     renderApiField('Collectibles', collectibleKeys.length ? collectibleKeys.join(', ') : 'Not returned'),
-    renderApiField('Primary guild tag', primaryGuild ? `${primaryGuild.tag} (${user.primary_guild.identity_guild_id || 'unknown guild'})` : 'Not returned', primaryGuild?.tag || ''),
+    renderApiField('Primary server tag', primaryGuild ? `${primaryGuild.tag} — ${guildDetails?.name || primaryGuild.guildId}` : 'Not returned', primaryGuild?.tag || ''),
     renderApiField('Forwarded badge arrays', renderForwardedBadges(user).length ? `${renderForwardedBadges(user).length} badge entries` : 'Not returned')
   ];
 
@@ -560,18 +728,20 @@ function renderUserApiDetails(user) {
 }
 
 function renderRawBlock(data) {
+  const json = JSON.stringify(data, null, 2);
   return `
     <details class="raw-block">
       <summary>
         <span>Raw JSON</span>
         <span class="chevron" aria-hidden="true"></span>
       </summary>
-      <pre>${escapeHTML(JSON.stringify(data, null, 2))}</pre>
+      <pre class="copyable raw-copy" role="button" tabindex="0" title="Click to copy raw JSON"
+        data-action="copy" data-copy="${escapeAttr(json)}">${escapeHTML(json)}</pre>
     </details>
   `;
 }
 
-function renderUserCard(user) {
+function renderUserCard(user, guildDetails = null) {
   const avatar = getUserAvatar(user);
   const banner = getUserBanner(user);
   const decoration = getAvatarDecoration(user);
@@ -581,10 +751,8 @@ function renderUserCard(user) {
   const accent = normalizeApiColor(user.accent_color);
   const flags = user.public_flags ?? user.flags ?? 0;
   const actions = [
-    { label: 'Copy ID', action: 'copy', copy: user.id },
     avatar.original && { label: 'Open avatar', href: avatar.original },
-    banner.original && { label: 'Open banner', href: banner.original },
-    { label: 'Copy JSON', action: 'copy', copy: JSON.stringify(user, null, 2) }
+    banner.original && { label: 'Open banner', href: banner.original }
   ];
 
   return `
@@ -592,7 +760,7 @@ function renderUserCard(user) {
       <div class="media-banner" style="${bannerStyle(banner)}"
         ${banner.animated ? `data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
-        <div class="avatar-wrap">
+        <div class="avatar-wrap avatar-wrap--interactive" role="button" tabindex="0" aria-label="Surprise ${escapeAttr(displayName)}'s profile picture">
           <img class="avatar-img" src="${escapeAttr(avatar.static)}" alt="Avatar of ${escapeAttr(displayName)}" draggable="false"
             ${avatar.animated ? `data-static-url="${escapeAttr(avatar.static)}" data-animated-url="${escapeAttr(avatar.animated)}"` : ''}>
           ${decoration ? `<img class="avatar-decoration" src="${escapeAttr(decoration)}" alt="" loading="lazy" draggable="false">` : ''}
@@ -600,7 +768,7 @@ function renderUserCard(user) {
         <div class="identity-copy">
           <h2>${escapeHTML(displayName)}</h2>
           <p>${escapeHTML(tag)}</p>
-          <div class="badge-strip">${renderBadges(flags, user)}</div>
+          <div class="badge-strip" aria-label="Profile badges">${renderBadges(flags, user, guildDetails)}</div>
         </div>
       </div>
 
@@ -608,7 +776,7 @@ function renderUserCard(user) {
         ${renderMetric('Created', formatDate(created))}
         ${renderMetric('Account age', snowflakeAge(user.id))}
         ${renderMetric('Public flags', String(flags))}
-        ${renderMetric('Premium', formatPremiumType(user.premium_type))}
+        ${renderMetric('Nitro', getPremiumSummary(user))}
       </div>
 
       <div class="meta-grid">
@@ -620,7 +788,7 @@ function renderUserCard(user) {
         ${renderMeta('API version', `Discord REST v${DISCORD_API_VERSION}`)}
       </div>
 
-      ${renderUserApiDetails(user)}
+      ${renderUserApiDetails(user, guildDetails)}
 
       ${renderActions(actions)}
       ${renderRawBlock(user)}
@@ -652,6 +820,14 @@ function renderGuildCard(guild) {
   const accent = normalizeApiColor(accentSource);
   const created = snowflakeToDate(guild.id);
   const features = Array.isArray(guild.features) ? guild.features.slice().sort() : [];
+  const guildTag = getGuildTagBadge(guild);
+  const hasGuildTags = features.includes('GUILD_TAGS');
+  const guildTagDisplay = guildTag || (hasGuildTags ? {
+    code: 'TAG',
+    name: 'Tags enabled',
+    detail: 'Tag value not returned by Discord',
+    kind: 'server-capability'
+  } : null);
   const firstFeature = features[0] || '';
   const vanity = guild.vanity_url_code ? `https://discord.gg/${guild.vanity_url_code}` : '';
   const iconMarkup = icon.fallback
@@ -659,12 +835,10 @@ function renderGuildCard(guild) {
     : `<img class="avatar-img" src="${escapeAttr(icon.static)}" alt="Icon of ${escapeAttr(guild.name || 'guild')}" draggable="false"
         ${icon.animated ? `data-static-url="${escapeAttr(icon.static)}" data-animated-url="${escapeAttr(icon.animated)}"` : ''}>`;
   const actions = [
-    { label: 'Copy ID', action: 'copy', copy: guild.id },
     !icon.fallback && icon.original && { label: 'Open icon', href: icon.original },
     banner.original && { label: 'Open banner', href: banner.original },
     vanity && { label: 'Open vanity', href: vanity },
-    { label: 'Invite bot', href: BOT_INVITE_URL },
-    { label: 'Copy JSON', action: 'copy', copy: JSON.stringify(guild, null, 2) }
+    { label: 'Invite bot', href: BOT_INVITE_URL }
   ];
 
   return `
@@ -676,6 +850,7 @@ function renderGuildCard(guild) {
         <div class="identity-copy">
           <h2>${escapeHTML(guild.name || 'Unknown guild')}</h2>
           <p>${escapeHTML(guild.description || 'No public description returned')}</p>
+          ${guildTagDisplay ? `<div class="badge-strip guild-tag-strip" aria-label="Guild tag">${renderBadge(guildTagDisplay)}</div>` : ''}
         </div>
       </div>
 
@@ -689,6 +864,7 @@ function renderGuildCard(guild) {
       <div class="meta-grid">
         ${renderMeta('Guild ID', guild.id, guild.id)}
         ${renderOwnerMeta(guild.owner_id)}
+        ${renderMeta('Server tag', guildTag?.tag || (hasGuildTags ? 'Enabled - value not returned' : 'Not enabled'), guildTag?.tag || '')}
         ${renderMeta('Locale', formatLocale(guild.preferred_locale))}
         ${renderMeta('Verification', formatVerificationLevel(guild.verification_level))}
         ${renderMeta('2FA requirement', guild.mfa_level === 1 ? 'Required' : 'Not required')}
@@ -774,10 +950,12 @@ function renderError(error, mode = state.mode) {
 function setResult(html, className = '') {
   const card = $('#resultCard');
   if (!card) return;
+  stopAvatarMotion();
   card.className = `panel result-panel ${className}`.trim();
   card.innerHTML = html;
   requestAnimationFrame(() => card.classList.add('is-ready'));
   wireResultMedia(card);
+  wireAvatarMotion(card);
 }
 
 function setMode(mode, reset = true) {
@@ -841,6 +1019,23 @@ async function fetchDiscord(mode, id, signal) {
   return data;
 }
 
+async function fetchPrimaryGuildDetails(user, signal) {
+  const identity = getPrimaryGuildIdentity(user);
+  if (!identity?.identity_enabled || !identity.identity_guild_id) return null;
+
+  try {
+    const guild = await fetchDiscord('guild', identity.identity_guild_id, signal);
+    return {
+      id: guild.id,
+      name: guild.name || '',
+      icon: guild.icon || ''
+    };
+  } catch (error) {
+    if (error.name === 'AbortError') throw error;
+    return null;
+  }
+}
+
 function parseErrorDetail(error) {
   if (error && error.data && typeof error.data === 'object') {
     return {
@@ -886,7 +1081,12 @@ async function runSearch() {
   try {
     const data = await fetchDiscord(mode, id, state.abortController.signal);
     if (token !== state.currentToken || mode !== state.mode) return;
-    setResult(mode === 'guild' ? renderGuildCard(data) : renderUserCard(data), `${mode}-result`);
+    if (mode === 'user') rememberPrimaryGuildTag(data);
+    const primaryGuildDetails = mode === 'user'
+      ? await fetchPrimaryGuildDetails(data, state.abortController.signal)
+      : null;
+    if (token !== state.currentToken || mode !== state.mode) return;
+    setResult(mode === 'guild' ? renderGuildCard(data) : renderUserCard(data, primaryGuildDetails), `${mode}-result`);
     announce(`${MODE_CONFIG[mode].label} loaded`, 'ok');
   } catch (error) {
     if (error.name === 'AbortError') return;
@@ -921,10 +1121,20 @@ function useExample() {
   runSearch();
 }
 
-async function copyText(text, label = 'Copied') {
+function flashCopied(target) {
+  if (!target) return;
+  target.classList.remove('is-copied');
+  void target.offsetWidth;
+  target.classList.add('is-copied');
+  clearTimeout(target.copyFeedbackTimer);
+  target.copyFeedbackTimer = setTimeout(() => target.classList.remove('is-copied'), 2000);
+}
+
+async function copyText(text, label = 'Copied', target = null) {
   if (!text) return false;
   try {
     await navigator.clipboard.writeText(text);
+    flashCopied(target);
     announce(label, 'ok');
     return true;
   } catch {}
@@ -939,6 +1149,7 @@ async function copyText(text, label = 'Copied') {
     textArea.select();
     const ok = document.execCommand('copy');
     textArea.remove();
+    if (ok) flashCopied(target);
     announce(ok ? label : 'Copy failed', ok ? 'ok' : 'warn');
     return ok;
   } catch {
@@ -980,6 +1191,118 @@ function wireResultMedia(root = document) {
       icon.innerHTML = '<span class="badge-fallback" aria-hidden="true">BADGE</span>';
     });
   });
+}
+
+function clearAvatarMotionClasses(avatar) {
+  if (!avatar) return;
+  avatar.classList.remove('avatar-arrival', 'avatar-surprised', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
+  avatar.style.removeProperty('--stress-x');
+  avatar.style.removeProperty('--stress-y');
+}
+
+function stopAvatarMotion() {
+  if (typeof state.avatarMotionCleanup === 'function') state.avatarMotionCleanup();
+  state.avatarMotionCleanup = null;
+}
+
+function wireAvatarMotion(root = document) {
+  const avatar = $('.avatar-wrap--interactive', root);
+  if (!avatar || state.settings.reduceMotion || avatar.dataset.motionBound === '1') return;
+
+  avatar.dataset.motionBound = '1';
+  const canTrackPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  let frame = 0;
+  let pointerX = null;
+  let pointerY = null;
+
+  const removeStress = () => {
+    avatar.classList.remove('avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
+    avatar.style.removeProperty('--stress-x');
+    avatar.style.removeProperty('--stress-y');
+  };
+
+  const updateStress = () => {
+    frame = 0;
+    if (pointerX == null || pointerY == null || avatar.classList.contains('avatar-arrival') || avatar.classList.contains('avatar-surprised')) return;
+    const rect = avatar.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const offsetX = centerX - pointerX;
+    const offsetY = centerY - pointerY;
+    const distance = Math.hypot(offsetX, offsetY);
+    const stage = distance <= 76 ? 3 : distance <= 145 ? 2 : distance <= 245 ? 1 : 0;
+
+    avatar.classList.toggle('avatar-stress-1', stage === 1);
+    avatar.classList.toggle('avatar-stress-2', stage === 2);
+    avatar.classList.toggle('avatar-stress-3', stage === 3);
+    if (!stage) {
+      removeStress();
+      return;
+    }
+
+    const safeDistance = Math.max(distance, 1);
+    const retreat = stage * 1.35;
+    avatar.style.setProperty('--stress-x', `${(offsetX / safeDistance * retreat).toFixed(2)}px`);
+    avatar.style.setProperty('--stress-y', `${(offsetY / safeDistance * retreat).toFixed(2)}px`);
+  };
+
+  const queueStressUpdate = event => {
+    if (!canTrackPointer || event.pointerType === 'touch') return;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    if (!frame) frame = requestAnimationFrame(updateStress);
+  };
+
+  const resetPointer = () => {
+    pointerX = null;
+    pointerY = null;
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    removeStress();
+  };
+
+  const surprise = () => {
+    if (state.settings.reduceMotion) return;
+    avatar.classList.remove('avatar-arrival', 'avatar-surprised');
+    removeStress();
+    void avatar.offsetWidth;
+    avatar.classList.add('avatar-surprised');
+  };
+
+  const handleAvatarKey = event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    surprise();
+  };
+
+  const handleAnimationEnd = event => {
+    if (event.target !== avatar) return;
+    if (event.animationName === 'avatarArrival') avatar.classList.remove('avatar-arrival');
+    if (event.animationName === 'avatarSurprised') {
+      avatar.classList.remove('avatar-surprised');
+      if (pointerX != null && !frame) frame = requestAnimationFrame(updateStress);
+    }
+  };
+
+  root.addEventListener('pointermove', queueStressUpdate);
+  root.addEventListener('pointerleave', resetPointer);
+  avatar.addEventListener('click', surprise);
+  avatar.addEventListener('keydown', handleAvatarKey);
+  avatar.addEventListener('animationend', handleAnimationEnd);
+  requestAnimationFrame(() => {
+    if (!state.settings.reduceMotion && avatar.isConnected) avatar.classList.add('avatar-arrival');
+  });
+
+  state.avatarMotionCleanup = () => {
+    if (frame) cancelAnimationFrame(frame);
+    root.removeEventListener('pointermove', queueStressUpdate);
+    root.removeEventListener('pointerleave', resetPointer);
+    avatar.removeEventListener('click', surprise);
+    avatar.removeEventListener('keydown', handleAvatarKey);
+    avatar.removeEventListener('animationend', handleAnimationEnd);
+    delete avatar.dataset.motionBound;
+    clearAvatarMotionClasses(avatar);
+  };
 }
 
 function handleFeature(button) {
@@ -1038,13 +1361,13 @@ function loadSettings() {
     theme: stored.theme || (prefersLight ? 'light' : 'dark'),
     reduceMotion: stored.reduceMotion ?? prefersReduced,
     autoSearch: stored.autoSearch ?? true,
-    badgeLabels: stored.badgeLabels ?? true
+    badgeLabels: stored.version === SETTINGS_VERSION ? stored.badgeLabels ?? false : false
   };
   applySettings(false);
 }
 
 function saveSettings() {
-  localStorage.setItem('discord-search-settings', JSON.stringify(state.settings));
+  localStorage.setItem('discord-search-settings', JSON.stringify({ ...state.settings, version: SETTINGS_VERSION }));
 }
 
 function applySettings(persist = true) {
@@ -1059,6 +1382,11 @@ function applySettings(persist = true) {
   if (reduceToggle) reduceToggle.checked = Boolean(state.settings.reduceMotion);
   if (autoToggle) autoToggle.checked = Boolean(state.settings.autoSearch);
   if (badgeToggle) badgeToggle.checked = Boolean(state.settings.badgeLabels);
+  if (state.settings.reduceMotion) {
+    stopAvatarMotion();
+  } else {
+    wireAvatarMotion($('#resultCard'));
+  }
   if (persist) saveSettings();
 }
 
@@ -1108,13 +1436,12 @@ function bindEvents() {
     const actionTarget = event.target.closest('[data-action]');
     if (!actionTarget) return;
     const action = actionTarget.dataset.action;
-    if (action === 'copy') copyText(actionTarget.dataset.copy, 'Copied');
+    if (action === 'copy') copyText(actionTarget.dataset.copy, 'Copied', actionTarget);
     if (action === 'clear-input') clearInput();
     if (action === 'use-example') useExample();
     if (action === 'retry') retryLastSearch();
     if (action === 'feature-detail') handleFeature(actionTarget);
     if (action === 'search-user') searchUserId(actionTarget.dataset.userId);
-    if (action === 'copy-issue') copyText(actionTarget.dataset.copy, 'Issue text copied');
   });
 
   $('#helpFab')?.addEventListener('click', () => toggleHelp());
@@ -1153,6 +1480,13 @@ function bindEvents() {
     const target = event.target;
     const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
     const editing = tag === 'input' || tag === 'textarea' || target?.isContentEditable;
+    const keyboardCopyTarget = target?.closest?.('[data-action="copy"][role="button"]');
+
+    if (keyboardCopyTarget === target && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault();
+      copyText(keyboardCopyTarget.dataset.copy, 'Copied', keyboardCopyTarget);
+      return;
+    }
 
     if (event.key === 'Escape') {
       toggleSettings(false);
@@ -1202,7 +1536,6 @@ function init() {
   loadSettings();
   bindEvents();
   setMode('user', true);
-  announce(`Ready - ${APP_VERSION}`, 'ok');
 }
 
 document.addEventListener('DOMContentLoaded', init);

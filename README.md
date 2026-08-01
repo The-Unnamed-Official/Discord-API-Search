@@ -1,6 +1,18 @@
-# Discord API Search v1
+# Discord API Search v1.1
 
 Unofficial static Discord snowflake lookup for public user and guild data. The browser talks to a lightweight Cloudflare Worker proxy, and the Worker talks to Discord REST API v10 so the bot token never ships to clients.
+
+## What's New In v1.1
+
+- A unified, deduplicated profile badge row now includes Discord public flags, forwarded profile badges, explicit Nitro status, bot/system markers, and the user's primary server tag.
+- Server-tag badges use Discord's tag artwork and resolve the server name when the proxy bot can access that guild.
+- Nitro badges appear only when Discord or the proxy returns an explicit premium signal; the app does not guess from cosmetics.
+- Badge labels are hidden by default; hovering or focusing a badge reveals an animated detail card, with an accessibility setting to keep labels visible.
+- The avatar and decoration now have an arrival bounce, click reaction, and three cursor-proximity stress stages. Reduced motion disables every one of these effects.
+- Copyable IDs, metadata, and raw JSON are now copied by clicking the whole field, while ID search controls remain separate actions.
+- Accent colors now visibly shape the user card, media edge, metadata, and field styling instead of appearing as only a faint glow.
+- Removed the visible status-toast pills while retaining screen-reader announcements.
+- Reworked phone and tablet layouts with denser metrics, touch-friendly actions, safe-area spacing, and a cleaner mobile header/profile card.
 
 ## What's New In v1
 
@@ -20,10 +32,10 @@ Unofficial static Discord snowflake lookup for public user and guild data. The b
 - Guild/server lookup by Discord snowflake ID with `with_counts=true`.
 - Avatar, banner, icon, splash, decoration, and badge rendering through Discord CDN resources.
 - Public badges from `public_flags`, plus forwarded badge arrays if Discord or the proxy returns actual badge entries.
-- Nitro, avatar decorations, nameplates, banners, collectibles, and primary guild tags are shown as API profile fields instead of being treated as badges.
+- Nitro and primary guild tags join public profile badges when Discord exposes them. Avatar decorations, nameplates, banners, and collectibles remain profile fields.
 - Owner ID quick-search from guild results.
 - Snowflake creation dates and account/server age.
-- Copy buttons for IDs, metadata, and raw JSON.
+- Click-to-copy fields for IDs, metadata, and raw JSON.
 - Detailed error handling for 404, 429, network, and upstream/proxy failures.
 - Local settings for light theme, reduced motion, auto search, and badge labels.
 
@@ -50,7 +62,7 @@ Open `index.html` in a modern browser. There is no build step.
 ```js
 const DISCORD_API_VERSION = 10;
 const PROJECT_URL = 'https://github.com/The-Unnamed-Official/Discord-API-Search';
-const APP_VERSION = '1';
+const APP_VERSION = '1.1';
 
 export default {
   async fetch(request, env) {
