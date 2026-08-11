@@ -1,14 +1,27 @@
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 const DISCORD_API_VERSION = 10;
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const BOT_INVITE_URL = 'https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8';
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const SETTINGS_VERSION = 2;
+const RECENT_SEARCHES_KEY = 'discord-search-recents';
+const CAPTCHA_SESSION_KEY = 'discord-search-captcha-session';
+const MAX_RECENT_SEARCHES = 5;
+const AVATAR_STRESS_START_DISTANCE = 260;
+const AVATAR_STRESS_FULL_DISTANCE = 54;
+const PROXIMITY_REVEAL_DISTANCE = 240;
+const PROXIMITY_SURFACE_SELECTOR = [
+  '.version-pill', '.nav-btn', '.ghost-btn', '.primary-btn', '.action-btn', '.mini-btn', '.round-btn', '.icon-btn',
+  '.mode-btn', '#searchId', '.recent-item', '.result-panel.user-result', '.result-panel.guild-result',
+  '.empty-glyph', '.error-code', '.avatar-img', '.badge', '.metric',
+  '.meta-cell:not(.meta-cell--split)', '.note-box', '.activity-card', '.cosmetic-card', '.feature-pill', '.feature-detail',
+  '.api-field', '.switch-ui', '.color-swatch', 'kbd'
+].join(',');
 
 const EXAMPLES = {
   user: '611204110955446301',
-  guild: '1275558913592529019'
+  guild: '1263989148092469259'
 };
 
 const state = {
@@ -22,7 +35,20 @@ const state = {
     autoSearch: true,
     badgeLabels: false
   },
-  avatarMotionCleanup: null
+  recentSearches: [],
+  isSearching: false,
+  autoSearchTimer: null,
+  avatarMotionCleanup: null,
+  cardRevealCleanup: null,
+  captcha: {
+    sessionToken: '',
+    expiresAt: 0,
+    widgetId: null,
+    pendingPromise: null,
+    resolvePending: null,
+    challengeId: 0,
+    verifyController: null
+  }
 };
 
 const cache = new Map();
@@ -58,7 +84,7 @@ const BADGES = [
   { bit: 1n << 9n, code: 'SUPPORTER', name: 'Early Supporter', hash: '7060786766c9c840eb3019e725d2b358' },
   { bit: 1n << 10n, code: 'TEAM', name: 'Team User' },
   { bit: 1n << 14n, code: 'BUG 2', name: 'Bug Hunter Level 2', hash: '848f79194d4be5ff5f81505cbd0ce1e6' },
-  { bit: 1n << 16n, code: 'BOT', name: 'Verified Bot' },
+  { bit: 1n << 16n, code: 'BOT', name: 'Verified Bot', iconType: 'verified-bot' },
   { bit: 1n << 17n, code: 'DEV', name: 'Early Verified Bot Developer', hash: '6df5892e0f35b051f8b61eace34f4967' },
   { bit: 1n << 18n, code: 'MOD', name: 'Moderator Programs Alumni', hash: 'fee1624003e2fee35cb398e125dc479b' },
   { bit: 1n << 19n, code: 'HTTP', name: 'HTTP Interactions Bot' },
@@ -72,6 +98,8 @@ const NITRO_BADGE = {
   hash: '2ba85e8026a8614b640c2837bcdfe21b',
   kind: 'nitro'
 };
+
+const ACTIVITY_TYPE_LABELS = ['Playing', 'Streaming', 'Listening to', 'Watching', 'Custom status', 'Competing in'];
 
 const FEATURE_DESCRIPTIONS = {
   ACTIVITIES_ALPHA: 'Early access flag for Discord Activities support in this guild.',
@@ -432,20 +460,13 @@ function getPrimaryGuildBadge(user, guildDetails = null) {
 }
 
 function getNitroBadge(user) {
-  if (!user || typeof user !== 'object') return null;
-  const premiumType = Number(user.premium_type);
-  const hasTypedPremium = Number.isInteger(premiumType) && premiumType > 0;
-  const hasExplicitPremium = user.nitro === true
-    || user.premium === true
-    || user.is_nitro === true
-    || Boolean(user.premium_since || user.nitro_since);
-  if (!hasTypedPremium && !hasExplicitPremium) return null;
+  const status = getNitroStatus(user);
+  if (!status.detected) return null;
 
-  const name = hasTypedPremium ? formatPremiumType(premiumType) : NITRO_BADGE.name;
   return {
     ...NITRO_BADGE,
-    name,
-    detail: user.premium_since || user.nitro_since ? `Subscriber since ${user.premium_since || user.nitro_since}` : 'Premium subscription'
+    name: status.name,
+    detail: status.detail
   };
 }
 
@@ -458,6 +479,169 @@ function getCollectibleNameplate(user) {
     skuId: nameplate.sku_id || '',
     src: nameplate.asset ? `https://cdn.discordapp.com/assets/collectibles/nameplates/${nameplate.asset}.png?size=64` : ''
   };
+}
+
+function discordCosmeticUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const raw = value.trim().replace(/\\/g, '/');
+  const candidate = raw.startsWith('/')
+    ? `https://cdn.discordapp.com${raw}`
+    : /^(?:assets\/)?(?:profile-effects|profile-frames|collectibles)\//i.test(raw)
+      ? `https://cdn.discordapp.com/${raw}`
+      : raw;
+  try {
+    const url = new URL(candidate);
+    const hostname = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || !(
+      hostname === 'discord.com' ||
+      hostname.endsWith('.discord.com') ||
+      hostname.endsWith('.discordapp.com') ||
+      hostname.endsWith('.discordapp.net')
+    )) return '';
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function firstCosmeticValue(source, keys) {
+  if (!source || typeof source !== 'object') return '';
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if ((typeof value === 'number' && Number.isFinite(value)) || typeof value === 'bigint') return String(value);
+  }
+  return '';
+}
+
+function normalizeProfileCosmetic(raw, type) {
+  if (!raw) return null;
+  const source = typeof raw === 'string' ? { asset: raw } : raw;
+  if (!source || typeof source !== 'object') return null;
+  const config = source.config && typeof source.config === 'object' ? source.config : {};
+  const assets = source.assets && typeof source.assets === 'object' ? source.assets : {};
+  const media = source.media && typeof source.media === 'object' ? source.media : {};
+  const merged = { ...config, ...assets, ...media, ...source };
+  const animatedRaw = firstCosmeticValue(merged, [
+    'animation_url', 'animationUrl', 'animated_url', 'animatedUrl', 'video_url', 'videoUrl',
+    'asset_url', 'assetUrl', 'src', 'url', 'asset'
+  ]);
+  const staticRaw = firstCosmeticValue(merged, [
+    'reduced_motion_url', 'reducedMotionUrl', 'reduced_motion_src', 'reducedMotionSrc',
+    'thumbnail_preview_src', 'thumbnailPreviewSrc', 'thumbnail_url', 'thumbnailUrl',
+    'preview_url', 'previewUrl', 'static_url', 'staticUrl'
+  ]);
+  const animated = discordCosmeticUrl(animatedRaw);
+  const staticUrl = discordCosmeticUrl(staticRaw);
+  const playable = animated && !/\.(?:json|lottie)(?:$|[?#])/i.test(animated);
+  const fallback = staticUrl || (playable ? animated : '');
+  const label = firstCosmeticValue(merged, ['name', 'title', 'label', 'accessibility_label', 'accessibilityLabel']);
+  const skuId = firstCosmeticValue(merged, ['sku_id', 'skuId']);
+  const id = firstCosmeticValue(merged, ['id', 'effect_id', 'effectId', 'frame_id', 'frameId']);
+  return {
+    type,
+    name: label || (type === 'frame' ? 'Profile Frame' : 'Profile Effect'),
+    skuId,
+    id,
+    animated: playable ? animated : '',
+    static: fallback,
+    isVideo: /\.(?:mp4|webm)(?:$|[?#])/i.test(animated || fallback),
+    returned: true
+  };
+}
+
+function getProfileEffect(user) {
+  const candidates = [
+    user?.profile_effect,
+    user?.profile_effect_data,
+    user?.profileEffect,
+    user?.profile_effect_id ? { id: user.profile_effect_id } : null,
+    user?.user_profile?.profile_effect,
+    user?.user_profile?.profile_effect_data,
+    user?.cosmetics?.profile_effect,
+    user?.collectibles?.profile_effect
+  ];
+  const raw = candidates.find(value => value && (typeof value === 'string' || typeof value === 'object'));
+  return normalizeProfileCosmetic(raw, 'effect');
+}
+
+function getProfileFrame(user) {
+  const candidates = [
+    user?.profile_frame,
+    user?.profile_frame_data,
+    user?.profileFrame,
+    user?.profile_frame_id ? { id: user.profile_frame_id } : null,
+    user?.user_profile?.profile_frame,
+    user?.user_profile?.profile_frame_data,
+    user?.cosmetics?.profile_frame,
+    user?.collectibles?.profile_frame,
+    user?.collectibles?.frame
+  ];
+  const raw = candidates.find(value => value && (typeof value === 'string' || typeof value === 'object'));
+  return normalizeProfileCosmetic(raw, 'frame');
+}
+
+function renderProfileCosmeticMedia(cosmetic, className) {
+  if (!cosmetic || (!cosmetic.animated && !cosmetic.static)) return '';
+  const source = state.settings.reduceMotion
+    ? cosmetic.static || cosmetic.animated
+    : cosmetic.animated || cosmetic.static;
+  const data = cosmetic.animated
+    ? ` data-static-url="${escapeAttr(cosmetic.static || cosmetic.animated)}" data-animated-url="${escapeAttr(cosmetic.animated)}"`
+    : '';
+  if (cosmetic.isVideo) {
+    const poster = cosmetic.static && cosmetic.static !== cosmetic.animated
+      ? ` poster="${escapeAttr(cosmetic.static)}"`
+      : '';
+    return `<video class="${escapeAttr(className)}" src="${escapeAttr(cosmetic.animated || source)}"${poster} muted loop playsinline preload="metadata" data-motion-video data-animated-url="${escapeAttr(cosmetic.animated || source)}"${state.settings.reduceMotion ? '' : ' autoplay'}></video>`;
+  }
+  return `<img class="${escapeAttr(className)}" src="${escapeAttr(source)}" alt="" draggable="false"${data}>`;
+}
+
+function renderUserCosmetics(user) {
+  const effect = getProfileEffect(user);
+  const frame = getProfileFrame(user);
+  const decoration = user.avatar_decoration_data;
+  const nameplate = getCollectibleNameplate(user);
+  const entries = [
+    {
+      label: 'Profile effect',
+      value: effect ? effect.name : 'Not returned by Discord',
+      detail: effect?.skuId ? `SKU ${effect.skuId}` : effect?.id ? `ID ${effect.id}` : effect ? 'Equipped' : 'The standard public user lookup omitted this field.'
+    },
+    {
+      label: 'Profile frame',
+      value: frame ? frame.name : 'Not returned by Discord',
+      detail: frame?.skuId ? `SKU ${frame.skuId}` : frame?.id ? `ID ${frame.id}` : frame ? 'Equipped' : 'Profile Frames are experimental and are not yet part of the documented User object.'
+    },
+    {
+      label: 'Avatar decoration',
+      value: decoration ? 'Equipped' : 'Not equipped or not returned',
+      detail: decoration?.sku_id ? `SKU ${decoration.sku_id}` : ''
+    },
+    {
+      label: 'Nameplate',
+      value: nameplate ? nameplate.name : 'Not equipped or not returned',
+      detail: nameplate?.skuId ? `SKU ${nameplate.skuId}` : ''
+    }
+  ];
+  return `
+    <section class="cosmetics-section" aria-label="Profile cosmetics">
+      <div class="section-title-row">
+        <h3>Profile cosmetics</h3>
+        <span>${[effect, frame, decoration, nameplate].filter(Boolean).length} returned</span>
+      </div>
+      <div class="cosmetics-grid">
+        ${entries.map(entry => `
+          <div class="cosmetic-card">
+            <span>${escapeHTML(entry.label)}</span>
+            <strong>${escapeHTML(entry.value)}</strong>
+            ${entry.detail ? `<small>${escapeHTML(entry.detail)}</small>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function getGuildIcon(guild) {
@@ -495,18 +679,29 @@ function getGuildBanner(guild) {
 
 function bannerStyle(asset) {
   if (!asset || !asset.static) return '';
-  if (asset.static.startsWith('#') || asset.static.startsWith('linear-gradient')) {
-    return `background:${escapeAttr(asset.static)}`;
+  const source = asset.animated && !state.settings.reduceMotion ? asset.animated : asset.static;
+  if (source.startsWith('#') || source.startsWith('linear-gradient')) {
+    return `background:${escapeAttr(source)}`;
   }
-  return `background-image:url('${escapeAttr(asset.static)}')`;
+  return `background-image:url('${escapeAttr(source)}')`;
+}
+
+function mediaSource(asset) {
+  if (!asset) return '';
+  return asset.animated && !state.settings.reduceMotion ? asset.animated : asset.static || asset.animated || '';
 }
 
 function renderBadge(badge) {
   const src = badge.src || (badge.hash ? badgeIconUrl(badge.hash) : '');
   const fallback = badge.fallback ? ` data-fallback="${escapeAttr(badge.fallback)}"` : '';
-  const icon = src
+  const symbolicIcon = badge.iconType === 'verified-bot'
+    ? '<span class="badge-symbol badge-symbol--verified-bot" aria-hidden="true"><span>&#10003;</span></span>'
+    : badge.iconType === 'bot-account'
+      ? '<span class="badge-symbol badge-symbol--bot-account" aria-hidden="true"><span class="bot-antenna"></span><span class="bot-face"><span></span><span></span></span></span>'
+      : '';
+  const icon = symbolicIcon || (src
     ? `<img class="badge-img" src="${escapeAttr(src)}" alt="" loading="lazy" draggable="false"${fallback}>`
-    : `<span class="badge-fallback" aria-hidden="true">${escapeHTML(badge.code.slice(0, 4))}</span>`;
+    : `<span class="badge-fallback" aria-hidden="true">${escapeHTML(badge.code.slice(0, 4))}</span>`);
   const detail = badge.detail ? `<span class="badge-detail">${escapeHTML(badge.detail)}</span>` : '';
   const kind = badge.kind ? ` badge--${String(badge.kind).replace(/[^a-z0-9_-]/gi, '')}` : '';
   const title = badge.detail ? `${badge.name} — ${badge.detail}` : badge.name;
@@ -584,12 +779,78 @@ function renderForwardedBadges(user) {
   return extras;
 }
 
-function getPremiumSummary(user) {
-  const explicit = getNitroBadge(user);
-  if (explicit) return explicit.name;
+function getNitroStatus(user) {
+  const unknown = {
+    detected: false,
+    confidence: 'unknown',
+    name: NITRO_BADGE.name,
+    summary: 'Unknown (may still have Nitro)',
+    detail: 'Discord did not expose premium_type or another explicit Nitro signal. Nitro users do not have to use a custom banner or animated avatar, so their absence does not mean the user lacks Nitro.'
+  };
+  if (!user || typeof user !== 'object') return unknown;
+  if (user.bot === true) {
+    return {
+      detected: false,
+      confidence: 'not-applicable',
+      name: NITRO_BADGE.name,
+      summary: 'Not applicable (bot account)',
+      detail: 'Discord bot accounts cannot have Nitro.'
+    };
+  }
+
+  const premiumType = Number(user.premium_type);
+  if (Number.isInteger(premiumType) && premiumType > 0) {
+    const name = formatPremiumType(premiumType);
+    return {
+      detected: true,
+      confidence: 'confirmed',
+      name,
+      summary: name,
+      detail: 'Confirmed by the premium_type field returned by Discord.'
+    };
+  }
+
+  const subscribedSince = user.premium_since || user.nitro_since;
+  if (user.nitro === true || user.premium === true || user.is_nitro === true || subscribedSince) {
+    return {
+      detected: true,
+      confidence: 'confirmed',
+      name: NITRO_BADGE.name,
+      summary: NITRO_BADGE.name,
+      detail: subscribedSince ? `Subscriber since ${subscribedSince}` : 'Confirmed by an explicit premium signal returned by the proxy.'
+    };
+  }
+
   const forwarded = renderForwardedBadges(user).find(badge => badgeDedupeKey(badge) === 'nitro');
-  if (forwarded) return forwarded.name;
-  return formatPremiumType(user?.premium_type);
+  if (forwarded) {
+    return {
+      detected: true,
+      confidence: 'confirmed',
+      name: forwarded.name || NITRO_BADGE.name,
+      summary: forwarded.name || NITRO_BADGE.name,
+      detail: forwarded.detail || 'Confirmed by a Nitro badge returned by the proxy.'
+    };
+  }
+
+  const profileSignals = [];
+  if (typeof user.banner === 'string' && user.banner.trim()) profileSignals.push('custom profile banner');
+  if (typeof user.avatar === 'string' && user.avatar.startsWith('a_')) profileSignals.push('animated avatar');
+
+  if (profileSignals.length) {
+    return {
+      detected: true,
+      confidence: 'inferred',
+      name: NITRO_BADGE.name,
+      summary: 'Likely Discord Nitro',
+      detail: `Inferred from ${profileSignals.join(' and ')}, which Discord documents as Nitro-only profile features.`
+    };
+  }
+
+  return unknown;
+}
+
+function getPremiumSummary(user) {
+  return getNitroStatus(user).summary;
 }
 
 function badgeDedupeKey(badge) {
@@ -617,11 +878,12 @@ function renderBadges(flags, user, guildDetails = null) {
   const badges = BADGES
     .filter(badge => (bitset & badge.bit) === badge.bit)
     .map(badge => ({ ...badge, id: badge.code.toLowerCase(), kind: 'public' }));
-  const forwardedBadges = renderForwardedBadges(user);
+  const forwardedBadges = renderForwardedBadges(user)
+    .filter(badge => !(user?.bot && badgeDedupeKey(badge) === 'nitro'));
   const accountBadges = [
     getPrimaryGuildBadge(user, guildDetails),
     getNitroBadge(user),
-    user?.bot ? { id: 'bot-account', code: 'BOT', name: 'Bot account', kind: 'account' } : null,
+    user?.bot ? { id: 'bot-account', code: 'BOT', name: 'Bot account', kind: 'account', iconType: 'bot-account' } : null,
     user?.system ? { id: 'system-account', code: 'SYS', name: 'Discord system user', kind: 'account' } : null
   ];
   const allBadges = dedupeBadges([...accountBadges, ...badges, ...forwardedBadges]);
@@ -643,7 +905,8 @@ function renderActions(actions) {
         }
         const data = action.copy ? ` data-copy="${escapeAttr(action.copy)}"` : '';
         const actionName = action.action ? ` data-action="${escapeAttr(action.action)}"` : '';
-        return `<button type="button" class="action-btn"${actionName}${data}>${escapeHTML(action.label)}</button>`;
+        const shareClass = action.action === 'share-lookup' ? ' action-btn--share' : '';
+        return `<button type="button" class="action-btn${shareClass}"${actionName}${data}>${escapeHTML(action.label)}</button>`;
       }).join('')}
     </div>
   `;
@@ -698,18 +961,72 @@ function renderApiField(label, value, copy = '') {
     : `<div class="api-field">${inner}</div>`;
 }
 
+function getUserPresence(user) {
+  const presence = user?.presence && typeof user.presence === 'object' ? user.presence : null;
+  const directActivities = Array.isArray(user?.activities) ? user.activities : null;
+  const presenceActivities = Array.isArray(presence?.activities) ? presence.activities : null;
+  const activities = directActivities || presenceActivities || [];
+  const rawStatus = String(presence?.status || user?.status || '').toLowerCase();
+  const status = ['online', 'idle', 'dnd', 'offline'].includes(rawStatus) ? rawStatus : '';
+  return {
+    activities: activities.filter(activity => activity && typeof activity === 'object').slice(0, 6),
+    status: String(status || '').toLowerCase(),
+    available: Boolean(directActivities || presenceActivities || status)
+  };
+}
+
+function renderUserActivity(user) {
+  const presence = getUserPresence(user);
+  const statusLabel = presence.status ? formatFeatureName(presence.status) : 'Status unavailable';
+  const items = presence.activities.map(activity => {
+    const type = ACTIVITY_TYPE_LABELS[Number(activity.type)] || 'Activity';
+    const isCustom = Number(activity.type) === 4;
+    const name = isCustom ? activity.state || activity.name || type : activity.name || type;
+    const detailParts = [
+      !isCustom && activity.details,
+      !isCustom && activity.state,
+      activity.timestamps?.start ? `Started ${formatDate(new Date(Number(activity.timestamps.start)))}` : ''
+    ].filter(Boolean);
+    return `
+      <div class="activity-card">
+        <span class="activity-type">${escapeHTML(type)}</span>
+        <strong>${escapeHTML(name)}</strong>
+        ${detailParts.length ? `<span>${escapeHTML(detailParts.join(' - '))}</span>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <section class="activity-section" aria-label="Discord activity and presence">
+      <div class="section-title-row">
+        <h3>Activity</h3>
+        <span class="presence-status presence-status--${escapeAttr(presence.status || 'unknown')}">${escapeHTML(statusLabel)}</span>
+      </div>
+      ${presence.available
+        ? items || '<div class="note-box">No current activity was included with the forwarded presence.</div>'
+        : '<div class="note-box"><strong>Activity not available</strong><span>The standard user REST lookup does not include presence. Activity appears here when the proxy forwards Discord Gateway presence data.</span></div>'}
+    </section>
+  `;
+}
+
 function renderUserApiDetails(user, guildDetails = null) {
   const decoration = user.avatar_decoration_data;
   const nameplate = getCollectibleNameplate(user);
+  const profileEffect = getProfileEffect(user);
+  const profileFrame = getProfileFrame(user);
   const primaryGuild = getPrimaryGuildBadge(user, guildDetails);
+  const nitroStatus = getNitroStatus(user);
   const collectibleKeys = user.collectibles && typeof user.collectibles === 'object'
     ? Object.keys(user.collectibles)
     : [];
   const lines = [
-    renderApiField('Nitro / premium type', getPremiumSummary(user)),
+    renderApiField('Nitro status', nitroStatus.summary),
+    renderApiField('Nitro evidence', nitroStatus.detail),
     renderApiField('Profile banner', user.banner ? 'Returned by API' : 'Not returned'),
     renderApiField('Accent color', formatHexColor(user.accent_color) || 'Not returned', formatHexColor(user.accent_color)),
-    renderApiField('Avatar decoration', decoration ? `SKU ${decoration.sku_id || 'unknown'}` : 'Not returned', decoration?.asset || ''),
+    renderApiField('Avatar decoration', decoration ? `SKU ${decoration.sku_id || 'unknown'}` : 'Not returned', decoration?.sku_id || ''),
+    renderApiField('Profile effect', profileEffect ? `${profileEffect.name}${profileEffect.skuId ? ` - SKU ${profileEffect.skuId}` : ''}` : 'Not returned'),
+    renderApiField('Profile frame', profileFrame ? `${profileFrame.name}${profileFrame.skuId ? ` - SKU ${profileFrame.skuId}` : ''}` : 'Not returned'),
     renderApiField('Nameplate', nameplate ? `${nameplate.name || 'Nameplate'}${nameplate.skuId ? ` - SKU ${nameplate.skuId}` : ''}` : 'Not returned', nameplate?.skuId || ''),
     renderApiField('Collectibles', collectibleKeys.length ? collectibleKeys.join(', ') : 'Not returned'),
     renderApiField('Primary server tag', primaryGuild ? `${primaryGuild.tag} — ${guildDetails?.name || primaryGuild.guildId}` : 'Not returned', primaryGuild?.tag || ''),
@@ -745,23 +1062,30 @@ function renderUserCard(user, guildDetails = null) {
   const avatar = getUserAvatar(user);
   const banner = getUserBanner(user);
   const decoration = getAvatarDecoration(user);
+  const profileEffect = getProfileEffect(user);
+  const profileFrame = getProfileFrame(user);
   const created = snowflakeToDate(user.id);
   const displayName = user.global_name || user.username || 'Unknown user';
   const tag = user.discriminator && user.discriminator !== '0' ? `${user.username}#${user.discriminator}` : `@${user.username}`;
   const accent = normalizeApiColor(user.accent_color);
   const flags = user.public_flags ?? user.flags ?? 0;
   const actions = [
+    { label: 'Share lookup', action: 'share-lookup' },
     avatar.original && { label: 'Open avatar', href: avatar.original },
-    banner.original && { label: 'Open banner', href: banner.original }
+    banner.original && { label: 'Open banner', href: banner.original },
+    (profileEffect?.animated || profileEffect?.static) && { label: 'Open profile effect', href: profileEffect.animated || profileEffect.static },
+    (profileFrame?.animated || profileFrame?.static) && { label: 'Open profile frame', href: profileFrame.animated || profileFrame.static }
   ];
 
   return `
     <article class="profile-card"${profileAccentStyle(accent)}>
+      ${profileEffect ? `<div class="profile-effect-layer" aria-hidden="true">${renderProfileCosmeticMedia(profileEffect, 'profile-effect-media')}</div>` : ''}
+      ${profileFrame ? `<div class="profile-frame-layer" aria-hidden="true">${renderProfileCosmeticMedia(profileFrame, 'profile-frame-media')}</div>` : ''}
       <div class="media-banner" style="${bannerStyle(banner)}"
-        ${banner.animated ? `data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
+        ${banner.animated ? `role="img" tabindex="0" aria-label="Animated profile banner of ${escapeAttr(displayName)}" data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
         <div class="avatar-wrap avatar-wrap--interactive" role="button" tabindex="0" aria-label="Surprise ${escapeAttr(displayName)}'s profile picture">
-          <img class="avatar-img" src="${escapeAttr(avatar.static)}" alt="Avatar of ${escapeAttr(displayName)}" draggable="false"
+          <img class="avatar-img" src="${escapeAttr(mediaSource(avatar))}" alt="Avatar of ${escapeAttr(displayName)}" draggable="false"
             ${avatar.animated ? `data-static-url="${escapeAttr(avatar.static)}" data-animated-url="${escapeAttr(avatar.animated)}"` : ''}>
           ${decoration ? `<img class="avatar-decoration" src="${escapeAttr(decoration)}" alt="" loading="lazy" draggable="false">` : ''}
         </div>
@@ -778,6 +1102,10 @@ function renderUserCard(user, guildDetails = null) {
         ${renderMetric('Public flags', String(flags))}
         ${renderMetric('Nitro', getPremiumSummary(user))}
       </div>
+
+      ${renderUserActivity(user)}
+
+      ${renderUserCosmetics(user)}
 
       <div class="meta-grid">
         ${renderMeta('User ID', user.id, user.id)}
@@ -832,9 +1160,10 @@ function renderGuildCard(guild) {
   const vanity = guild.vanity_url_code ? `https://discord.gg/${guild.vanity_url_code}` : '';
   const iconMarkup = icon.fallback
     ? `<div class="avatar-img avatar-fallback" style="background:${escapeAttr(icon.gradient)}">${escapeHTML(icon.letter)}</div>`
-    : `<img class="avatar-img" src="${escapeAttr(icon.static)}" alt="Icon of ${escapeAttr(guild.name || 'guild')}" draggable="false"
+    : `<img class="avatar-img" src="${escapeAttr(mediaSource(icon))}" alt="Icon of ${escapeAttr(guild.name || 'guild')}" draggable="false"
         ${icon.animated ? `data-static-url="${escapeAttr(icon.static)}" data-animated-url="${escapeAttr(icon.animated)}"` : ''}>`;
   const actions = [
+    { label: 'Share lookup', action: 'share-lookup' },
     !icon.fallback && icon.original && { label: 'Open icon', href: icon.original },
     banner.original && { label: 'Open banner', href: banner.original },
     vanity && { label: 'Open vanity', href: vanity },
@@ -844,7 +1173,7 @@ function renderGuildCard(guild) {
   return `
     <article class="profile-card guild-profile"${profileAccentStyle(accent)}>
       <div class="media-banner" style="${bannerStyle(banner)}"
-        ${banner.animated ? `data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
+        ${banner.animated ? `role="img" tabindex="0" aria-label="Animated guild banner of ${escapeAttr(guild.name || 'guild')}" data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
         <div class="avatar-wrap">${iconMarkup}</div>
         <div class="identity-copy">
@@ -915,6 +1244,7 @@ function emptyCard(mode = state.mode) {
       <span class="empty-glyph" aria-hidden="true">${mode === 'guild' ? 'G' : 'ID'}</span>
       <h2>${escapeHTML(config.emptyTitle)}</h2>
       <p>${escapeHTML(config.emptyText)}</p>
+      <button type="button" class="ghost-btn" data-action="use-example">Try the example</button>
     </div>
   `;
 }
@@ -951,15 +1281,30 @@ function setResult(html, className = '') {
   const card = $('#resultCard');
   if (!card) return;
   stopAvatarMotion();
+  stopCardReveal();
   card.className = `panel result-panel ${className}`.trim();
+  card.setAttribute('aria-busy', className === 'loading' ? 'true' : 'false');
   card.innerHTML = html;
+  const profile = $('.profile-card', card);
+  const accent = profile?.style.getPropertyValue('--profile-accent-rgb').trim() || '';
+  if (accent) card.style.setProperty('--profile-accent-rgb', accent);
+  else card.style.removeProperty('--profile-accent-rgb');
   requestAnimationFrame(() => card.classList.add('is-ready'));
   wireResultMedia(card);
   wireAvatarMotion(card);
+  wireCardReveal(document);
 }
 
-function setMode(mode, reset = true) {
+function setMode(mode, reset = true, announceChange = true) {
   if (!MODE_CONFIG[mode]) return;
+  clearTimeout(state.autoSearchTimer);
+  state.autoSearchTimer = null;
+  if (reset && state.abortController) {
+    state.abortController.abort();
+    state.abortController = null;
+    state.currentToken += 1;
+    setSearchLoading(false);
+  }
   state.mode = mode;
   $$('.mode-btn').forEach(button => {
     const active = button.dataset.mode === mode;
@@ -974,17 +1319,358 @@ function setMode(mode, reset = true) {
     input.setAttribute('aria-label', MODE_CONFIG[mode].input);
   }
   if (helper) helper.textContent = MODE_CONFIG[mode].helper;
-  if (reset) setResult(emptyCard(mode), 'empty');
-  announce(`${MODE_CONFIG[mode].label} lookup selected`, 'ok');
+  if (reset) {
+    state.lastSearch = null;
+    clearLookupUrl();
+    setResult(emptyCard(mode), 'empty');
+  }
+  syncSearchControls();
+  if (announceChange) announce(`${MODE_CONFIG[mode].label} lookup selected`, 'ok');
 }
 
 function extractSnowflake(value) {
-  const match = String(value || '').match(/\d{5,30}/);
-  return match ? match[0] : '';
+  const matches = String(value || '').match(/\d+/g) || [];
+  return matches.find(candidate => /^\d{5,30}$/.test(candidate)) || '';
 }
 
 function validateSnowflake(id) {
   return /^\d{5,30}$/.test(id);
+}
+
+function setInputFeedback(message = '', tone = '') {
+  const input = $('#searchId');
+  const feedback = $('#inputFeedback');
+  if (!input || !feedback) return;
+  feedback.textContent = message;
+  feedback.dataset.tone = tone;
+  input.setAttribute('aria-invalid', tone === 'error' ? 'true' : 'false');
+}
+
+function syncSearchControls(forceError = false) {
+  const input = $('#searchId');
+  const clearButton = $('[data-action="clear-input"]');
+  if (!input) return;
+
+  const raw = input.value.trim();
+  const id = extractSnowflake(raw);
+  if (clearButton) {
+    clearButton.disabled = !raw;
+    clearButton.textContent = state.isSearching ? 'Cancel' : 'Clear';
+  }
+
+  if (!raw) {
+    setInputFeedback();
+    return;
+  }
+
+  if (validateSnowflake(id)) {
+    const cleaned = raw !== id;
+    setInputFeedback(cleaned ? `Ready: ${id} was extracted from the pasted text.` : 'Ready to search.', 'success');
+    return;
+  }
+
+  if (forceError) {
+    setInputFeedback('Enter a numeric Discord snowflake between 5 and 30 digits.', 'error');
+    return;
+  }
+
+  setInputFeedback('Keep typing, or paste a Discord mention, profile link, or raw ID.', 'info');
+}
+
+function setSearchLoading(isLoading) {
+  state.isSearching = Boolean(isLoading);
+  const button = $('#searchButton');
+  const label = $('.button-label', button || document);
+  const input = $('#searchId');
+  if (button) {
+    button.disabled = state.isSearching;
+    button.classList.toggle('is-loading', state.isSearching);
+  }
+  if (label) label.textContent = state.isSearching ? 'Searching' : 'Search';
+  if (input) input.setAttribute('aria-busy', state.isSearching ? 'true' : 'false');
+  syncSearchControls();
+}
+
+function revealResult(moveFocus = false) {
+  if (!moveFocus) return;
+  const card = $('#resultCard');
+  if (!card) return;
+  card.focus({ preventScroll: true });
+  if (window.matchMedia('(max-width: 820px)').matches) {
+    card.scrollIntoView({ behavior: state.settings.reduceMotion ? 'auto' : 'smooth', block: 'start' });
+  }
+}
+
+function updateLookupUrl(mode, id) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.set('type', mode);
+    url.searchParams.set('id', id);
+    window.history.replaceState({}, '', url);
+  } catch {}
+}
+
+function clearLookupUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('type');
+    url.searchParams.delete('id');
+    window.history.replaceState({}, '', url);
+  } catch {}
+}
+
+function readLookupUrl() {
+  try {
+    const url = new URL(window.location.href);
+    const mode = url.searchParams.get('type');
+    const id = extractSnowflake(url.searchParams.get('id'));
+    if (MODE_CONFIG[mode] && validateSnowflake(id)) return { mode, id };
+  } catch {}
+  return null;
+}
+
+function loadRecentSearches() {
+  let stored = [];
+  try {
+    stored = JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+  } catch {}
+  state.recentSearches = Array.isArray(stored)
+    ? stored.filter(item => MODE_CONFIG[item?.mode] && validateSnowflake(String(item?.id || ''))).slice(0, MAX_RECENT_SEARCHES)
+    : [];
+  renderRecentSearches();
+}
+
+function saveRecentSearches() {
+  try {
+    localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(state.recentSearches));
+  } catch {}
+}
+
+function renderRecentSearches() {
+  const section = $('#recentSearches');
+  const list = $('#recentList');
+  if (!section || !list) return;
+  section.hidden = state.recentSearches.length === 0;
+  list.innerHTML = state.recentSearches.map(item => `
+    <button type="button" class="recent-item" data-action="recent-search" data-mode="${escapeAttr(item.mode)}" data-id="${escapeAttr(item.id)}">
+      <span class="recent-kind">${escapeHTML(MODE_CONFIG[item.mode].label)}</span>
+      <span class="recent-copy">
+        <strong>${escapeHTML(item.label || item.id)}</strong>
+        <span>${escapeHTML(item.id)}</span>
+      </span>
+      <span class="recent-arrow" aria-hidden="true">&rarr;</span>
+    </button>
+  `).join('');
+}
+
+function recordRecentSearch(mode, id, data) {
+  const label = mode === 'guild'
+    ? data?.name || id
+    : data?.global_name || data?.username || id;
+  const next = { mode, id: String(id), label: String(label) };
+  state.recentSearches = [
+    next,
+    ...state.recentSearches.filter(item => !(item.mode === mode && item.id === String(id)))
+  ].slice(0, MAX_RECENT_SEARCHES);
+  saveRecentSearches();
+  renderRecentSearches();
+}
+
+function clearRecentSearches() {
+  state.recentSearches = [];
+  saveRecentSearches();
+  renderRecentSearches();
+  announce('Recent lookups cleared', 'info');
+}
+
+function runRecentSearch(button) {
+  const mode = button.dataset.mode;
+  const id = extractSnowflake(button.dataset.id);
+  if (!MODE_CONFIG[mode] || !validateSnowflake(id)) return;
+  setMode(mode, false);
+  const input = $('#searchId');
+  if (input) input.value = id;
+  syncSearchControls();
+  runSearch({ moveFocus: true });
+}
+
+async function shareCurrentLookup(target = null) {
+  if (!state.lastSearch) return;
+  updateLookupUrl(state.lastSearch.mode, state.lastSearch.id);
+  await copyText(window.location.href, 'Lookup link copied', target);
+}
+
+function loadCaptchaSession() {
+  let stored = {};
+  try {
+    stored = JSON.parse(sessionStorage.getItem(CAPTCHA_SESSION_KEY) || '{}') || {};
+  } catch {}
+  if (stored.token && Number(stored.expiresAt) > Date.now() + 10000) {
+    state.captcha.sessionToken = String(stored.token);
+    state.captcha.expiresAt = Number(stored.expiresAt);
+  } else {
+    clearCaptchaSession();
+  }
+}
+
+function saveCaptchaSession(token, expiresAt) {
+  state.captcha.sessionToken = String(token || '');
+  state.captcha.expiresAt = Number(expiresAt) || 0;
+  try {
+    sessionStorage.setItem(CAPTCHA_SESSION_KEY, JSON.stringify({
+      token: state.captcha.sessionToken,
+      expiresAt: state.captcha.expiresAt
+    }));
+  } catch {}
+}
+
+function clearCaptchaSession() {
+  state.captcha.sessionToken = '';
+  state.captcha.expiresAt = 0;
+  try {
+    sessionStorage.removeItem(CAPTCHA_SESSION_KEY);
+  } catch {}
+}
+
+function getCaptchaSessionToken() {
+  if (!state.captcha.sessionToken || state.captcha.expiresAt <= Date.now() + 10000) {
+    clearCaptchaSession();
+    return '';
+  }
+  return state.captcha.sessionToken;
+}
+
+function setCaptchaFeedback(message = '', tone = '') {
+  const feedback = $('#captchaFeedback');
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.dataset.tone = tone;
+}
+
+function waitForTurnstile(timeoutMs = 10000) {
+  if (window.turnstile?.render) return Promise.resolve(window.turnstile);
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const check = () => {
+      if (window.turnstile?.render) {
+        resolve(window.turnstile);
+        return;
+      }
+      if (Date.now() - started >= timeoutMs) {
+        reject(new Error('The verification widget could not be loaded. Check your connection and try again.'));
+        return;
+      }
+      setTimeout(check, 80);
+    };
+    check();
+  });
+}
+
+async function getCaptchaConfig() {
+  const response = await fetch(`${API_BASE}/captcha/config`, { cache: 'no-store' });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.enabled || !data.site_key) {
+    throw new Error(data.message || 'Human verification is not configured on the API worker.');
+  }
+  return data;
+}
+
+function closeCaptcha(success = false) {
+  const dialog = $('#captchaDialog');
+  if (dialog) {
+    dialog.hidden = true;
+    dialog.setAttribute('aria-hidden', 'true');
+    dialog.setAttribute('inert', '');
+  }
+  document.body.classList.remove('captcha-open');
+  state.captcha.challengeId += 1;
+  state.captcha.verifyController?.abort();
+  state.captcha.verifyController = null;
+  if (state.captcha.widgetId != null && window.turnstile?.remove) {
+    try {
+      window.turnstile.remove(state.captcha.widgetId);
+    } catch {}
+  }
+  state.captcha.widgetId = null;
+  const resolve = state.captcha.resolvePending;
+  state.captcha.resolvePending = null;
+  state.captcha.pendingPromise = null;
+  if (resolve) resolve(Boolean(success));
+}
+
+async function verifyCaptchaToken(challengeToken, challengeId) {
+  if (challengeId !== state.captcha.challengeId || !state.captcha.pendingPromise) return;
+  state.captcha.verifyController?.abort();
+  const controller = new AbortController();
+  state.captcha.verifyController = controller;
+  setCaptchaFeedback('Verifying securely...', 'info');
+  try {
+    const response = await fetch(`${API_BASE}/captcha/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: challengeToken }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (challengeId !== state.captcha.challengeId || !state.captcha.pendingPromise) return;
+    if (!response.ok || !data.session_token || !data.expires_at) {
+      throw new Error(data.message || 'Verification was not accepted. Please try again.');
+    }
+    saveCaptchaSession(data.session_token, data.expires_at);
+    setCaptchaFeedback('Verified. Continuing your lookup...', 'success');
+    announce('Human verification complete', 'ok');
+    closeCaptcha(true);
+  } catch (error) {
+    if (error.name === 'AbortError') return;
+    setCaptchaFeedback(error.message || 'Verification failed. Please try again.', 'error');
+    if (state.captcha.widgetId != null && window.turnstile?.reset) {
+      try {
+        window.turnstile.reset(state.captcha.widgetId);
+      } catch {}
+    }
+  } finally {
+    if (state.captcha.verifyController === controller) state.captcha.verifyController = null;
+  }
+}
+
+async function prepareCaptchaWidget(challengeId) {
+  setCaptchaFeedback('Loading secure verification...', 'info');
+  const [config, turnstile] = await Promise.all([getCaptchaConfig(), waitForTurnstile()]);
+  if (challengeId !== state.captcha.challengeId || !state.captcha.pendingPromise) return;
+  const container = $('#turnstileWidget');
+  if (!container) throw new Error('Verification container is unavailable.');
+  container.innerHTML = '';
+  state.captcha.widgetId = turnstile.render(container, {
+    sitekey: config.site_key,
+    theme: state.settings.theme,
+    size: window.matchMedia('(max-width: 380px)').matches ? 'compact' : 'flexible',
+    action: 'discord_lookup',
+    callback: token => verifyCaptchaToken(token, challengeId),
+    'expired-callback': () => setCaptchaFeedback('The challenge expired. Please complete it again.', 'warn'),
+    'error-callback': () => setCaptchaFeedback('The challenge could not run. Please retry.', 'error')
+  });
+  setCaptchaFeedback();
+}
+
+function requestCaptchaChallenge() {
+  if (state.captcha.pendingPromise) return state.captcha.pendingPromise;
+  const dialog = $('#captchaDialog');
+  if (!dialog) return Promise.resolve(false);
+
+  state.captcha.pendingPromise = new Promise(resolve => {
+    state.captcha.resolvePending = resolve;
+  });
+  state.captcha.challengeId += 1;
+  const challengeId = state.captcha.challengeId;
+  dialog.hidden = false;
+  dialog.removeAttribute('inert');
+  dialog.setAttribute('aria-hidden', 'false');
+  document.body.classList.add('captcha-open');
+  requestAnimationFrame(() => $('[data-action="cancel-captcha"]', dialog)?.focus({ preventScroll: true }));
+  prepareCaptchaWidget(challengeId).catch(error => {
+    if (challengeId === state.captcha.challengeId) setCaptchaFeedback(error.message, 'error');
+  });
+  return state.captcha.pendingPromise;
 }
 
 async function fetchDiscord(mode, id, signal) {
@@ -993,7 +1679,9 @@ async function fetchDiscord(mode, id, signal) {
   if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
 
   const path = mode === 'guild' ? `guilds/${id}?with_counts=true` : `users/${id}`;
-  const response = await fetch(`${API_BASE}/${path}`, { signal });
+  const captchaSession = getCaptchaSessionToken();
+  const headers = captchaSession ? { 'X-Captcha-Session': captchaSession } : {};
+  const response = await fetch(`${API_BASE}/${path}`, { signal, headers });
   const body = await response.text();
   let data = null;
   try {
@@ -1058,23 +1746,29 @@ function parseErrorDetail(error) {
   return { message: error ? error.message : 'Unknown error.' };
 }
 
-async function runSearch() {
+async function runSearch({ moveFocus = false } = {}) {
+  clearTimeout(state.autoSearchTimer);
+  state.autoSearchTimer = null;
   const input = $('#searchId');
   if (!input) return;
   const id = extractSnowflake(input.value);
   const mode = state.mode;
 
   if (!validateSnowflake(id)) {
-    setResult(renderError({ message: 'Enter a numeric Discord snowflake ID between 5 and 30 digits.' }, mode), 'error');
+    syncSearchControls(true);
+    input.focus();
     announce('Invalid snowflake ID', 'err');
     return;
   }
 
   input.value = id;
+  syncSearchControls();
   state.lastSearch = { mode, id };
+  updateLookupUrl(mode, id);
   if (state.abortController) state.abortController.abort();
   state.abortController = new AbortController();
   const token = ++state.currentToken;
+  setSearchLoading(true);
   setResult(loadingCard(), 'loading');
   announce(`Searching ${MODE_CONFIG[mode].label.toLowerCase()} ${id}`, 'info');
 
@@ -1087,12 +1781,30 @@ async function runSearch() {
       : null;
     if (token !== state.currentToken || mode !== state.mode) return;
     setResult(mode === 'guild' ? renderGuildCard(data) : renderUserCard(data, primaryGuildDetails), `${mode}-result`);
+    recordRecentSearch(mode, id, data);
+    revealResult(moveFocus);
     announce(`${MODE_CONFIG[mode].label} loaded`, 'ok');
   } catch (error) {
     if (error.name === 'AbortError') return;
     if (token !== state.currentToken || mode !== state.mode) return;
+    if (error.status === 403 && error.data?.captcha_required) {
+      clearCaptchaSession();
+      setSearchLoading(false);
+      const verified = await requestCaptchaChallenge();
+      if (verified && token === state.currentToken && mode === state.mode) {
+        return runSearch({ moveFocus });
+      }
+      if (token === state.currentToken) setResult(emptyCard(mode), 'empty');
+      return;
+    }
     setResult(renderError(error, mode), 'error');
+    revealResult(moveFocus);
     announce(parseErrorDetail(error).message, error.status === 429 ? 'warn' : 'err');
+  } finally {
+    if (token === state.currentToken) {
+      state.abortController = null;
+      setSearchLoading(false);
+    }
   }
 }
 
@@ -1101,15 +1813,24 @@ function retryLastSearch() {
   setMode(state.lastSearch.mode, false);
   const input = $('#searchId');
   if (input) input.value = state.lastSearch.id;
-  runSearch();
+  runSearch({ moveFocus: true });
 }
 
 function clearInput() {
+  clearTimeout(state.autoSearchTimer);
+  state.autoSearchTimer = null;
+  if (state.abortController) state.abortController.abort();
+  state.abortController = null;
+  state.currentToken += 1;
+  setSearchLoading(false);
   const input = $('#searchId');
   if (input) {
     input.value = '';
     input.focus();
   }
+  state.lastSearch = null;
+  clearLookupUrl();
+  syncSearchControls();
   setResult(emptyCard(state.mode), 'empty');
   announce('Search cleared', 'info');
 }
@@ -1118,7 +1839,8 @@ function useExample() {
   const input = $('#searchId');
   if (!input) return;
   input.value = EXAMPLES[state.mode];
-  runSearch();
+  syncSearchControls();
+  runSearch({ moveFocus: true });
 }
 
 function flashCopied(target) {
@@ -1158,23 +1880,49 @@ async function copyText(text, label = 'Copied', target = null) {
   }
 }
 
+function setAnimatedMediaState(element, animated) {
+  if (!element) return;
+  if (element.matches('video[data-motion-video]')) {
+    if (animated) {
+      const play = element.play();
+      if (play?.catch) play.catch(() => {});
+    } else {
+      element.pause();
+      try { element.currentTime = 0; } catch {}
+    }
+    return;
+  }
+  const source = animated ? element.dataset.animatedUrl : element.dataset.staticUrl;
+  if (!source) return;
+  if (element.tagName === 'IMG') element.src = source;
+  else element.style.backgroundImage = `url('${source}')`;
+}
+
+function syncAnimatedMedia(root = document) {
+  $$('[data-animated-url]', root).forEach(element => {
+    setAnimatedMediaState(element, !state.settings.reduceMotion);
+  });
+}
+
 function wireResultMedia(root = document) {
   $$('[data-animated-url]', root).forEach(element => {
     if (element.dataset.mediaBound === '1') return;
     element.dataset.mediaBound = '1';
+    const layer = element.closest('.profile-effect-layer, .profile-frame-layer');
+    const trigger = element.closest('.avatar-wrap') || layer?.closest('.profile-card') || element;
     const showAnimated = () => {
-      if (element.tagName === 'IMG') element.src = element.dataset.animatedUrl;
-      else element.style.backgroundImage = `url('${element.dataset.animatedUrl}')`;
+      if (state.settings.reduceMotion) setAnimatedMediaState(element, true);
     };
     const showStatic = () => {
-      if (element.tagName === 'IMG') element.src = element.dataset.staticUrl;
-      else element.style.backgroundImage = `url('${element.dataset.staticUrl}')`;
+      if (state.settings.reduceMotion) setAnimatedMediaState(element, false);
     };
-    element.addEventListener('mouseenter', showAnimated);
-    element.addEventListener('mouseleave', showStatic);
-    element.addEventListener('focus', showAnimated);
-    element.addEventListener('blur', showStatic);
+    trigger.addEventListener('pointerenter', showAnimated);
+    trigger.addEventListener('pointerleave', showStatic);
+    trigger.addEventListener('focusin', showAnimated);
+    trigger.addEventListener('focusout', showStatic);
   });
+
+  syncAnimatedMedia(root);
 
   $$('.badge-img', root).forEach(image => {
     if (image.dataset.fallbackBound === '1') return;
@@ -1195,14 +1943,179 @@ function wireResultMedia(root = document) {
 
 function clearAvatarMotionClasses(avatar) {
   if (!avatar) return;
-  avatar.classList.remove('avatar-arrival', 'avatar-surprised', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
-  avatar.style.removeProperty('--stress-x');
-  avatar.style.removeProperty('--stress-y');
+  avatar.classList.remove('avatar-arrival', 'avatar-surprised', 'avatar-stress-adaptive', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
+  ['--stress-x', '--stress-y', '--stress-rotate', '--stress-saturation', '--stress-brightness']
+    .forEach(property => avatar.style.removeProperty(property));
+}
+
+function proximityStressIntensity(distance) {
+  const range = AVATAR_STRESS_START_DISTANCE - AVATAR_STRESS_FULL_DISTANCE;
+  const normalized = Math.max(0, Math.min(1, (AVATAR_STRESS_START_DISTANCE - Number(distance)) / range));
+  return normalized * normalized * (3 - 2 * normalized);
 }
 
 function stopAvatarMotion() {
   if (typeof state.avatarMotionCleanup === 'function') state.avatarMotionCleanup();
   state.avatarMotionCleanup = null;
+}
+
+function stopCardReveal() {
+  if (typeof state.cardRevealCleanup === 'function') state.cardRevealCleanup();
+  state.cardRevealCleanup = null;
+}
+
+function cardRevealIntensity(distance) {
+  const normalized = Math.max(0, Math.min(1, (PROXIMITY_REVEAL_DISTANCE - Number(distance)) / PROXIMITY_REVEAL_DISTANCE));
+  return normalized * normalized * (3 - 2 * normalized);
+}
+
+function wireCardReveal(root = document) {
+  const canTrackPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (!canTrackPointer || state.settings.reduceMotion || document.querySelector('.proximity-border-layer')) return;
+
+  const canvas = document.createElement('canvas');
+  canvas.className = 'proximity-border-layer';
+  canvas.setAttribute('aria-hidden', 'true');
+  document.body.appendChild(canvas);
+  const context = canvas.getContext('2d');
+  if (!context) {
+    canvas.remove();
+    return;
+  }
+
+  let surfaces = [];
+  let pointerX = null;
+  let pointerY = null;
+  let frame = 0;
+  let refreshFrame = 0;
+
+  const resizeCanvas = () => {
+    const scale = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.max(1, Math.round(window.innerWidth * scale));
+    canvas.height = Math.max(1, Math.round(window.innerHeight * scale));
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+  };
+
+  const collectSurfaces = () => {
+    refreshFrame = 0;
+    surfaces = $$(PROXIMITY_SURFACE_SELECTOR).filter(element => {
+      if (!(element instanceof HTMLElement) || element === canvas || element.hidden) return false;
+      if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
+      if (element.closest('#helpPanel, #settingsPanel, #captchaDialog')) return false;
+      const style = getComputedStyle(element);
+      const opacity = Number.parseFloat(style.opacity);
+      if (style.display === 'none' || style.visibility === 'hidden' || (Number.isFinite(opacity) && opacity < .05)) return false;
+      if (!element.getClientRects().length) return false;
+      const widths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
+        .map(value => Number.parseFloat(value) || 0);
+      return widths.some(width => width > 0);
+    }).map(element => {
+      const style = getComputedStyle(element);
+      const accent = style.getPropertyValue('--profile-accent-rgb').trim() || '88, 101, 242';
+      return {
+        element,
+        radius: Math.max(0, Number.parseFloat(style.borderTopLeftRadius) || 0),
+        accent: /^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$/.test(accent) ? accent : '88, 101, 242'
+      };
+    });
+  };
+
+  const scheduleSurfaceRefresh = () => {
+    if (refreshFrame) return;
+    refreshFrame = requestAnimationFrame(collectSurfaces);
+  };
+
+  const roundedRect = (x, y, width, height, radius) => {
+    const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
+    if (typeof context.roundRect === 'function') {
+      context.beginPath();
+      context.roundRect(x, y, width, height, safeRadius);
+      return;
+    }
+    context.beginPath();
+    context.moveTo(x + safeRadius, y);
+    context.arcTo(x + width, y, x + width, y + height, safeRadius);
+    context.arcTo(x + width, y + height, x, y + height, safeRadius);
+    context.arcTo(x, y + height, x, y, safeRadius);
+    context.arcTo(x, y, x + width, y, safeRadius);
+    context.closePath();
+  };
+
+  const drawReveal = () => {
+    frame = 0;
+    context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    if (pointerX == null || pointerY == null) return;
+
+    surfaces.forEach(surface => {
+      if (!surface.element.isConnected) return;
+      const rect = surface.element.getBoundingClientRect();
+      if (rect.width < 3 || rect.height < 3 || rect.bottom < -2 || rect.top > window.innerHeight + 2 || rect.right < -2 || rect.left > window.innerWidth + 2) return;
+      const distanceX = Math.max(rect.left - pointerX, 0, pointerX - rect.right);
+      const distanceY = Math.max(rect.top - pointerY, 0, pointerY - rect.bottom);
+      const strength = cardRevealIntensity(Math.hypot(distanceX, distanceY));
+      if (strength <= .002) return;
+
+      const gradient = context.createRadialGradient(pointerX, pointerY, 0, pointerX, pointerY, PROXIMITY_REVEAL_DISTANCE);
+      gradient.addColorStop(0, `rgba(${surface.accent}, 1)`);
+      gradient.addColorStop(.24, `rgba(${surface.accent}, .92)`);
+      gradient.addColorStop(1, `rgba(${surface.accent}, 0)`);
+      context.save();
+      context.globalAlpha = Math.min(1, .28 + strength * .72);
+      context.strokeStyle = gradient;
+      context.lineWidth = 1.1 + strength * 1.15;
+      context.shadowBlur = 7 + strength * 8;
+      context.shadowColor = `rgba(${surface.accent}, ${(.28 + strength * .5).toFixed(3)})`;
+      roundedRect(rect.left + .5, rect.top + .5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1), surface.radius);
+      context.stroke();
+      context.restore();
+    });
+  };
+
+  const trackPointer = event => {
+    if (event.pointerType === 'touch') return;
+    pointerX = event.clientX;
+    pointerY = event.clientY;
+    if (!frame) frame = requestAnimationFrame(drawReveal);
+  };
+
+  const resetPointer = () => {
+    pointerX = null;
+    pointerY = null;
+    if (!frame) frame = requestAnimationFrame(drawReveal);
+  };
+
+  const handleScroll = () => {
+    if (!frame && pointerX != null) frame = requestAnimationFrame(drawReveal);
+  };
+
+  const observer = new MutationObserver(scheduleSurfaceRefresh);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'hidden', 'inert', 'aria-hidden']
+  });
+  resizeCanvas();
+  collectSurfaces();
+  document.addEventListener('pointermove', trackPointer);
+  document.addEventListener('pointerleave', resetPointer);
+  window.addEventListener('blur', resetPointer);
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('scroll', handleScroll, { passive: true });
+
+  state.cardRevealCleanup = () => {
+    if (frame) cancelAnimationFrame(frame);
+    if (refreshFrame) cancelAnimationFrame(refreshFrame);
+    observer.disconnect();
+    document.removeEventListener('pointermove', trackPointer);
+    document.removeEventListener('pointerleave', resetPointer);
+    window.removeEventListener('blur', resetPointer);
+    window.removeEventListener('resize', resizeCanvas);
+    window.removeEventListener('scroll', handleScroll);
+    canvas.remove();
+  };
 }
 
 function wireAvatarMotion(root = document) {
@@ -1214,51 +2127,99 @@ function wireAvatarMotion(root = document) {
   let frame = 0;
   let pointerX = null;
   let pointerY = null;
+  let intensity = 0;
+  let retreatX = 0;
+  let retreatY = 0;
+  let phase = 0;
+  let lastFrameTime = 0;
 
-  const removeStress = () => {
-    avatar.classList.remove('avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
-    avatar.style.removeProperty('--stress-x');
-    avatar.style.removeProperty('--stress-y');
+  const clearStressVisuals = () => {
+    avatar.classList.remove('avatar-stress-adaptive', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
+    ['--stress-x', '--stress-y', '--stress-rotate', '--stress-saturation', '--stress-brightness']
+      .forEach(property => avatar.style.removeProperty(property));
   };
 
-  const updateStress = () => {
-    frame = 0;
-    if (pointerX == null || pointerY == null || avatar.classList.contains('avatar-arrival') || avatar.classList.contains('avatar-surprised')) return;
-    const rect = avatar.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const offsetX = centerX - pointerX;
-    const offsetY = centerY - pointerY;
-    const distance = Math.hypot(offsetX, offsetY);
-    const stage = distance <= 76 ? 3 : distance <= 145 ? 2 : distance <= 245 ? 1 : 0;
+  const removeStress = () => {
+    intensity = 0;
+    retreatX = 0;
+    retreatY = 0;
+    clearStressVisuals();
+  };
 
-    avatar.classList.toggle('avatar-stress-1', stage === 1);
-    avatar.classList.toggle('avatar-stress-2', stage === 2);
-    avatar.classList.toggle('avatar-stress-3', stage === 3);
-    if (!stage) {
+  const ensureStressFrame = () => {
+    if (frame) return;
+    lastFrameTime = performance.now();
+    frame = requestAnimationFrame(updateStress);
+  };
+
+  const updateStress = now => {
+    frame = 0;
+    const reacting = avatar.classList.contains('avatar-arrival') || avatar.classList.contains('avatar-surprised');
+    if (reacting) {
       removeStress();
       return;
     }
 
-    const safeDistance = Math.max(distance, 1);
-    const retreat = stage * 1.35;
-    avatar.style.setProperty('--stress-x', `${(offsetX / safeDistance * retreat).toFixed(2)}px`);
-    avatar.style.setProperty('--stress-y', `${(offsetY / safeDistance * retreat).toFixed(2)}px`);
+    const deltaSeconds = Math.min(Math.max((now - lastFrameTime) / 1000, 0), .05) || (1 / 60);
+    lastFrameTime = now;
+    let targetIntensity = 0;
+    let targetRetreatX = 0;
+    let targetRetreatY = 0;
+
+    if (pointerX != null && pointerY != null) {
+      const rect = avatar.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const offsetX = centerX - pointerX;
+      const offsetY = centerY - pointerY;
+      const distance = Math.hypot(offsetX, offsetY);
+      const safeDistance = Math.max(distance, 1);
+      const centerDamping = Math.min(distance / 12, 1);
+      targetIntensity = proximityStressIntensity(distance);
+      const retreat = targetIntensity * 4.05 * centerDamping;
+      targetRetreatX = offsetX / safeDistance * retreat;
+      targetRetreatY = offsetY / safeDistance * retreat;
+    }
+
+    const intensityResponse = targetIntensity > intensity ? 11 : 7;
+    const intensityBlend = 1 - Math.exp(-deltaSeconds * intensityResponse);
+    const retreatBlend = 1 - Math.exp(-deltaSeconds * 12);
+    intensity += (targetIntensity - intensity) * intensityBlend;
+    retreatX += (targetRetreatX - retreatX) * retreatBlend;
+    retreatY += (targetRetreatY - retreatY) * retreatBlend;
+
+    if (intensity < .002 && targetIntensity === 0) {
+      removeStress();
+      return;
+    }
+
+    phase += deltaSeconds * (7 + intensity * 34);
+    const amplitude = intensity * (.45 + intensity * 2.75);
+    const jitterX = (Math.sin(phase * 1.13) + Math.sin(phase * 2.47) * .42) * amplitude;
+    const jitterY = (Math.cos(phase * 1.41) + Math.sin(phase * 2.13) * .36) * amplitude * .78;
+    const rotation = (Math.sin(phase * 1.73) * .85 + Math.cos(phase * 2.31) * .25)
+      * intensity * (.35 + intensity * 1.45);
+
+    avatar.classList.add('avatar-stress-adaptive');
+    avatar.style.setProperty('--stress-x', `${(retreatX + jitterX).toFixed(3)}px`);
+    avatar.style.setProperty('--stress-y', `${(retreatY + jitterY).toFixed(3)}px`);
+    avatar.style.setProperty('--stress-rotate', `${rotation.toFixed(3)}deg`);
+    avatar.style.setProperty('--stress-saturation', (1 + intensity * .12).toFixed(3));
+    avatar.style.setProperty('--stress-brightness', (1 + intensity * .04).toFixed(3));
+    frame = requestAnimationFrame(updateStress);
   };
 
   const queueStressUpdate = event => {
     if (!canTrackPointer || event.pointerType === 'touch') return;
     pointerX = event.clientX;
     pointerY = event.clientY;
-    if (!frame) frame = requestAnimationFrame(updateStress);
+    ensureStressFrame();
   };
 
   const resetPointer = () => {
     pointerX = null;
     pointerY = null;
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-    removeStress();
+    ensureStressFrame();
   };
 
   const surprise = () => {
@@ -1277,10 +2238,13 @@ function wireAvatarMotion(root = document) {
 
   const handleAnimationEnd = event => {
     if (event.target !== avatar) return;
-    if (event.animationName === 'avatarArrival') avatar.classList.remove('avatar-arrival');
+    if (event.animationName === 'avatarArrival') {
+      avatar.classList.remove('avatar-arrival');
+      if (pointerX != null) ensureStressFrame();
+    }
     if (event.animationName === 'avatarSurprised') {
       avatar.classList.remove('avatar-surprised');
-      if (pointerX != null && !frame) frame = requestAnimationFrame(updateStress);
+      if (pointerX != null) ensureStressFrame();
     }
   };
 
@@ -1322,7 +2286,8 @@ function searchUserId(userId) {
   setMode('user', false);
   const input = $('#searchId');
   if (input) input.value = id;
-  runSearch();
+  syncSearchControls();
+  runSearch({ moveFocus: true });
 }
 
 function toggleHelp(force) {
@@ -1333,19 +2298,30 @@ function toggleHelp(force) {
   panel.classList.toggle('is-collapsed', !next);
   document.body.classList.toggle('help-hidden', !next);
   panel.setAttribute('aria-hidden', next ? 'false' : 'true');
-  if (fab) fab.setAttribute('aria-expanded', next ? 'true' : 'false');
+  if (fab) {
+    fab.setAttribute('aria-expanded', next ? 'true' : 'false');
+    fab.setAttribute('aria-label', next ? 'Hide help' : 'Show help');
+  }
   announce(next ? 'Help opened' : 'Help hidden', 'info');
 }
 
-function toggleSettings(force) {
+function toggleSettings(force, restoreFocus = false) {
   const panel = $('#settingsPanel');
   const fab = $('#settingsFab');
   if (!panel) return;
   const next = typeof force === 'boolean' ? force : panel.getAttribute('aria-hidden') === 'true';
   panel.classList.toggle('is-open', next);
   panel.setAttribute('aria-hidden', next ? 'false' : 'true');
-  if (fab) fab.setAttribute('aria-expanded', next ? 'true' : 'false');
-  if (next) panel.focus({ preventScroll: true });
+  panel.toggleAttribute('inert', !next);
+  if (fab) {
+    fab.setAttribute('aria-expanded', next ? 'true' : 'false');
+    fab.setAttribute('aria-label', next ? 'Close settings' : 'Open settings');
+  }
+  if (next) {
+    requestAnimationFrame(() => $('[data-action="close-settings"]', panel)?.focus({ preventScroll: true }));
+  } else if (restoreFocus) {
+    fab?.focus({ preventScroll: true });
+  }
 }
 
 function loadSettings() {
@@ -1357,8 +2333,9 @@ function loadSettings() {
   }
   const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
   const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const storedTheme = stored.theme === 'light' || stored.theme === 'dark' ? stored.theme : '';
   state.settings = {
-    theme: stored.theme || (prefersLight ? 'light' : 'dark'),
+    theme: storedTheme || (prefersLight ? 'light' : 'dark'),
     reduceMotion: stored.reduceMotion ?? prefersReduced,
     autoSearch: stored.autoSearch ?? true,
     badgeLabels: stored.version === SETTINGS_VERSION ? stored.badgeLabels ?? false : false
@@ -1367,11 +2344,16 @@ function loadSettings() {
 }
 
 function saveSettings() {
-  localStorage.setItem('discord-search-settings', JSON.stringify({ ...state.settings, version: SETTINGS_VERSION }));
+  try {
+    localStorage.setItem('discord-search-settings', JSON.stringify({ ...state.settings, version: SETTINGS_VERSION }));
+  } catch {}
 }
 
 function applySettings(persist = true) {
   document.documentElement.dataset.theme = state.settings.theme;
+  $$('meta[name="theme-color"]').forEach(meta => {
+    meta.content = state.settings.theme === 'light' ? '#f4f6fa' : '#111316';
+  });
   document.documentElement.classList.toggle('reduced-motion', Boolean(state.settings.reduceMotion));
   document.documentElement.classList.toggle('badge-labels-off', !state.settings.badgeLabels);
   const themeToggle = $('#themeToggle');
@@ -1384,9 +2366,12 @@ function applySettings(persist = true) {
   if (badgeToggle) badgeToggle.checked = Boolean(state.settings.badgeLabels);
   if (state.settings.reduceMotion) {
     stopAvatarMotion();
+    stopCardReveal();
   } else {
     wireAvatarMotion($('#resultCard'));
+    wireCardReveal(document);
   }
+  syncAnimatedMedia(document);
   if (persist) saveSettings();
 }
 
@@ -1408,20 +2393,23 @@ function bindEvents() {
 
   form?.addEventListener('submit', event => {
     event.preventDefault();
-    runSearch();
+    runSearch({ moveFocus: true });
   });
 
-  let autoTimer = null;
   input?.addEventListener('input', () => {
+    syncSearchControls();
+    clearTimeout(state.autoSearchTimer);
+    state.autoSearchTimer = null;
     if (!state.settings.autoSearch) return;
-    clearTimeout(autoTimer);
     const id = extractSnowflake(input.value);
     if (id.length < 17) return;
-    autoTimer = setTimeout(runSearch, 550);
+    state.autoSearchTimer = setTimeout(() => runSearch({ moveFocus: false }), 550);
   });
 
   $$('.mode-btn').forEach((button, index, buttons) => {
-    button.addEventListener('click', () => setMode(button.dataset.mode));
+    button.addEventListener('click', () => {
+      if (button.dataset.mode !== state.mode) setMode(button.dataset.mode);
+    });
     button.addEventListener('keydown', event => {
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       event.preventDefault();
@@ -1442,10 +2430,15 @@ function bindEvents() {
     if (action === 'retry') retryLastSearch();
     if (action === 'feature-detail') handleFeature(actionTarget);
     if (action === 'search-user') searchUserId(actionTarget.dataset.userId);
+    if (action === 'recent-search') runRecentSearch(actionTarget);
+    if (action === 'clear-history') clearRecentSearches();
+    if (action === 'share-lookup') shareCurrentLookup(actionTarget);
+    if (action === 'close-settings') toggleSettings(false, true);
+    if (action === 'cancel-captcha') closeCaptcha(false);
   });
 
   $('#helpFab')?.addEventListener('click', () => toggleHelp());
-  $('#settingsFab')?.addEventListener('click', () => toggleSettings());
+  $('#settingsFab')?.addEventListener('click', () => toggleSettings(undefined, true));
   $('#brandButton')?.addEventListener('click', () => {
     const mark = $('#brandMark');
     if (!mark) return;
@@ -1467,6 +2460,10 @@ function bindEvents() {
   });
   $('#autoSearchToggle')?.addEventListener('change', event => {
     state.settings.autoSearch = event.target.checked;
+    if (!state.settings.autoSearch) {
+      clearTimeout(state.autoSearchTimer);
+      state.autoSearchTimer = null;
+    }
     applySettings();
     announce(`Auto search ${state.settings.autoSearch ? 'enabled' : 'disabled'}`, 'ok');
   });
@@ -1481,6 +2478,26 @@ function bindEvents() {
     const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
     const editing = tag === 'input' || tag === 'textarea' || target?.isContentEditable;
     const keyboardCopyTarget = target?.closest?.('[data-action="copy"][role="button"]');
+    const captchaDialog = $('#captchaDialog');
+    const captchaOpen = captchaDialog?.getAttribute('aria-hidden') === 'false';
+
+    if (captchaOpen && event.key === 'Tab') {
+      const focusable = $$('button, iframe, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])', captchaDialog)
+        .filter(element => !element.hidden && !element.hasAttribute('disabled'));
+      if (focusable.length) {
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    }
+
+    if (captchaOpen && event.key !== 'Escape' && event.key !== 'Tab') return;
 
     if (keyboardCopyTarget === target && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
@@ -1489,7 +2506,12 @@ function bindEvents() {
     }
 
     if (event.key === 'Escape') {
-      toggleSettings(false);
+      if (captchaOpen) {
+        closeCaptcha(false);
+        return;
+      }
+      const settingsOpen = $('#settingsPanel')?.getAttribute('aria-hidden') === 'false';
+      if (settingsOpen) toggleSettings(false, true);
       return;
     }
 
@@ -1534,8 +2556,23 @@ function bindEvents() {
 
 function init() {
   loadSettings();
+  loadRecentSearches();
+  loadCaptchaSession();
   bindEvents();
-  setMode('user', true);
+  const sharedLookup = readLookupUrl();
+  if (sharedLookup) {
+    setMode(sharedLookup.mode, true, false);
+    const input = $('#searchId');
+    if (input) input.value = sharedLookup.id;
+    syncSearchControls();
+    runSearch({ moveFocus: false });
+    return;
+  }
+  setMode('user', true, false);
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+function refresh() {
+  location.reload();
+}
