@@ -1540,6 +1540,13 @@ function getCaptchaSessionToken() {
   return state.captcha.sessionToken;
 }
 
+async function requireCaptchaBeforeSearch() {
+  if (getCaptchaSessionToken()) return true;
+  clearCaptchaSession();
+  announce('Complete the security check before searching', 'info');
+  return requestCaptchaChallenge();
+}
+
 function setCaptchaFeedback(message = '', tone = '') {
   const feedback = $('#captchaFeedback');
   if (!feedback) return;
@@ -1644,6 +1651,7 @@ async function prepareCaptchaWidget(challengeId) {
     sitekey: config.site_key,
     theme: state.settings.theme,
     size: window.matchMedia('(max-width: 380px)').matches ? 'compact' : 'flexible',
+    appearance: 'always',
     action: 'discord_lookup',
     callback: token => verifyCaptchaToken(token, challengeId),
     'expired-callback': () => setCaptchaFeedback('The challenge expired. Please complete it again.', 'warn'),
@@ -1763,6 +1771,17 @@ async function runSearch({ moveFocus = false } = {}) {
 
   input.value = id;
   syncSearchControls();
+
+  if (!getCaptchaSessionToken()) {
+    if (state.abortController) state.abortController.abort();
+    state.abortController = null;
+    const gateToken = ++state.currentToken;
+    setSearchLoading(false);
+    const verified = await requireCaptchaBeforeSearch();
+    const inputStillMatches = extractSnowflake(input.value) === id;
+    if (!verified || gateToken !== state.currentToken || mode !== state.mode || !inputStillMatches) return;
+  }
+
   state.lastSearch = { mode, id };
   updateLookupUrl(mode, id);
   if (state.abortController) state.abortController.abort();

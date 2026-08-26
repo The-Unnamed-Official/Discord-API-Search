@@ -96,7 +96,7 @@ async function verifyCaptcha(request, env) {
   }
 
   const token = typeof body.token === 'string' ? body.token.trim() : '';
-  if (!token || token.length > 4096) {
+  if (!token || token.length > 2048) {
     return json(request, env, { message: 'A valid Turnstile response is required.' }, 400);
   }
 
@@ -118,7 +118,8 @@ async function verifyCaptcha(request, env) {
   }
 
   const allowedHostnames = getAllowedTurnstileHostnames(env);
-  const hostnameAllowed = !validation.hostname || allowedHostnames.includes(validation.hostname.toLowerCase());
+  const hostnameAllowed = typeof validation.hostname === 'string' &&
+    allowedHostnames.includes(validation.hostname.toLowerCase());
   if (!validation.success || validation.action !== TURNSTILE_ACTION || !hostnameAllowed) {
     return json(request, env, {
       message: 'Verification was not accepted. Please try again.',

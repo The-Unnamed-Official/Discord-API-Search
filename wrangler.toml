@@ -1,0 +1,18 @@
+name = "discord-api-search"
+main = "worker.js"
+compatibility_date = "2026-08-26"
+workers_dev = true
+
+[vars]
+ALLOWED_ORIGINS = "https://discord-id-hub.info"
+TURNSTILE_ALLOWED_HOSTNAMES = "discord-id-hub.info"
+CAPTCHA_SESSION_MINUTES = "15"
+
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+
+[observability.traces]
+enabled = true

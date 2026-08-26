@@ -103,7 +103,17 @@ Configure these Worker values before deployment:
 - Variable `TURNSTILE_ALLOWED_HOSTNAMES`: comma-separated widget hostnames; defaults to `discord-id-hub.info`.
 - Optional variable `CAPTCHA_SESSION_MINUTES`: between 5 and 30 minutes; defaults to 15.
 
-The Worker deliberately fails closed when Turnstile is incomplete. A client-side widget by itself is not security. Add Cloudflare rate limiting to the lookup routes as a second abuse-control layer.
+Create a Cloudflare Turnstile widget in Managed mode for `discord-id-hub.info`, then add its keys and the Worker secrets without committing them:
+
+```powershell
+npx wrangler secret put BOT_TOKEN
+npx wrangler secret put TURNSTILE_SITE_KEY
+npx wrangler secret put TURNSTILE_SECRET_KEY
+npx wrangler secret put CAPTCHA_SESSION_SECRET
+npx wrangler deploy
+```
+
+The included `wrangler.toml` deploys to the existing `discord-api-search` Worker name and configures the production origin, allowed Turnstile hostname, and 15-minute verification session. The Worker deliberately fails closed when Turnstile is incomplete. A client-side widget by itself is not security. Add Cloudflare rate limiting to the lookup routes as a second abuse-control layer.
 
 ## Notes
 
