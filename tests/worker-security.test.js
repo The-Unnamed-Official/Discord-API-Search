@@ -24,6 +24,13 @@ const { pathToFileURL } = require('node:url');
   assert.equal(challengeResponse.status, 403);
   assert.equal((await challengeResponse.json()).captcha_required, true);
 
+  const oversizedTokenResponse = await worker.fetch(new Request('https://worker.example/api/captcha/verify', {
+    method: 'POST',
+    headers: { Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: 'x'.repeat(2049) })
+  }), configuredEnv);
+  assert.equal(oversizedTokenResponse.status, 400);
+
   const configResponse = await worker.fetch(new Request('https://worker.example/api/captcha/config', {
     headers: { Origin: origin }
   }), configuredEnv);
@@ -33,14 +40,15 @@ const { pathToFileURL } = require('node:url');
   assert.equal(JSON.stringify(config).includes('private-secret-key'), false);
 
   const originalFetch = global.fetch;
+  let siteverifyResult = {
+    success: true,
+    action: 'discord_lookup',
+    hostname: 'discord-id-hub.info'
+  };
   global.fetch = async input => {
     const url = String(input);
     if (url.includes('/turnstile/v0/siteverify')) {
-      return new Response(JSON.stringify({
-        success: true,
-        action: 'discord_lookup',
-        hostname: 'discord-id-hub.info'
-      }), { headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify(siteverifyResult), { headers: { 'Content-Type': 'application/json' } });
     }
     if (url.includes('discord.com/api/v10/users/')) {
       return new Response(JSON.stringify({ id: '397241335050141698', username: 'test-user' }), {
@@ -55,6 +63,20 @@ const { pathToFileURL } = require('node:url');
       Origin: origin,
       'User-Agent': 'worker-security-test',
       'CF-Connecting-IP': '203.0.113.10'
+    };
+
+    siteverifyResult = { success: true, action: 'discord_lookup' };
+    const missingHostnameResponse = await worker.fetch(new Request('https://worker.example/api/captcha/verify', {
+      method: 'POST',
+      headers: { ...clientHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: 'hostname-less-token' })
+    }), configuredEnv);
+    assert.equal(missingHostnameResponse.status, 403);
+
+    siteverifyResult = {
+      success: true,
+      action: 'discord_lookup',
+      hostname: 'discord-id-hub.info'
     };
     const verificationResponse = await worker.fetch(new Request('https://worker.example/api/captcha/verify', {
       method: 'POST',
