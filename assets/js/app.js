@@ -1,24 +1,18 @@
-const APP_VERSION = 'v1.2';
+(() => {
+'use strict';
+
+const { createEffects, createMediaController } = window.DiscordIDHub || {};
+const APP_VERSION = 'v1.5';
 const DISCORD_API_VERSION = 10;
 const DISCORD_EPOCH = 1420070400000n;
 const API_BASE = 'https://discord-api-search.bbrraaggee.workers.dev/api';
 const BOT_INVITE_URL = 'https://discord.com/oauth2/authorize?client_id=1406921951196221520&integration_type=0&scope=bot%20applications.commands&permissions=8';
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 32;
 const SETTINGS_VERSION = 2;
 const RECENT_SEARCHES_KEY = 'discord-search-recents';
 const CAPTCHA_SESSION_KEY = 'discord-search-captcha-session';
 const MAX_RECENT_SEARCHES = 5;
-const AVATAR_STRESS_START_DISTANCE = 260;
-const AVATAR_STRESS_FULL_DISTANCE = 54;
-const PROXIMITY_REVEAL_DISTANCE = 240;
-const PROXIMITY_SURFACE_SELECTOR = [
-  '.version-pill', '.nav-btn', '.ghost-btn', '.primary-btn', '.action-btn', '.mini-btn', '.round-btn', '.icon-btn',
-  '.mode-btn', '#searchId', '.recent-item', '.result-panel.user-result', '.result-panel.guild-result',
-  '.empty-glyph', '.error-code', '.avatar-img', '.badge', '.metric',
-  '.meta-cell:not(.meta-cell--split)', '.note-box', '.activity-card', '.cosmetic-card', '.feature-pill', '.feature-detail',
-  '.api-field', '.switch-ui', '.color-swatch', 'kbd'
-].join(',');
-
 const EXAMPLES = {
   user: '611204110955446301',
   guild: '1263989148092469259'
@@ -33,13 +27,12 @@ const state = {
     theme: 'dark',
     reduceMotion: false,
     autoSearch: true,
-    badgeLabels: false
+    badgeLabels: false,
+    pointerEffects: true
   },
   recentSearches: [],
   isSearching: false,
   autoSearchTimer: null,
-  avatarMotionCleanup: null,
-  cardRevealCleanup: null,
   captcha: {
     sessionToken: '',
     expiresAt: 0,
@@ -51,6 +44,8 @@ const state = {
   }
 };
 
+let effects;
+let media;
 const cache = new Map();
 const guildTagCache = new Map();
 
@@ -59,15 +54,15 @@ const MODE_CONFIG = {
     label: 'User',
     input: 'Enter a Discord user ID',
     helper: 'Paste a user snowflake. URLs and mentions are cleaned automatically.',
-    emptyTitle: 'Ready for a user lookup',
+    emptyTitle: 'A profile, at a glance.',
     emptyText: 'Search a user ID to inspect public profile data, badges, avatar resources, and snowflake dates.',
     notFound: 'User not found.'
   },
   guild: {
-    label: 'Guild',
+    label: 'Server',
     input: 'Enter a Discord guild/server ID',
     helper: 'Guild lookups require the proxy bot to be in that server.',
-    emptyTitle: 'Ready for a guild lookup',
+    emptyTitle: 'A server, at a glance.',
     emptyText: 'Search a guild ID to inspect public server data, features, counts, and CDN resources.',
     notFound: 'Guild not found.'
   }
@@ -78,9 +73,9 @@ const BADGES = [
   { bit: 1n << 1n, code: 'PARTNER', name: 'Partnered Server Owner', hash: '3f9748e53446a137a052f3454e2de41e' },
   { bit: 1n << 2n, code: 'HYPESQUAD', name: 'HypeSquad Events Member', hash: 'bf01d1073931f921909045f3a39fd264' },
   { bit: 1n << 3n, code: 'BUG 1', name: 'Bug Hunter Level 1', hash: '2717692c7dca7289b35297368a940dd0' },
-  { bit: 1n << 6n, code: 'BRAVERY', name: 'House Bravery Member', hash: '8a88d63823d8a71cd5e390baa45efa02', fallback: 'resources/7158-bravery.png' },
-  { bit: 1n << 7n, code: 'BRILLIANCE', name: 'House Brilliance Member', hash: '011940fd013da3f7fb926e4a1cd2e618', fallback: 'resources/7156-brilliance.png' },
-  { bit: 1n << 8n, code: 'BALANCE', name: 'House Balance Member', hash: '3aa41de486fa12454c3761e8e223442e.png', fallback: 'resources/7157-balance.png' },
+  { bit: 1n << 6n, code: 'BRAVERY', name: 'House Bravery Member', hash: '8a88d63823d8a71cd5e390baa45efa02' },
+  { bit: 1n << 7n, code: 'BRILLIANCE', name: 'House Brilliance Member', hash: '011940fd013da3f7fb926e4a1cd2e618' },
+  { bit: 1n << 8n, code: 'BALANCE', name: 'House Balance Member', hash: '3aa41de486fa12454c3761e8e223442e.png' },
   { bit: 1n << 9n, code: 'SUPPORTER', name: 'Early Supporter', hash: '7060786766c9c840eb3019e725d2b358' },
   { bit: 1n << 10n, code: 'TEAM', name: 'Team User' },
   { bit: 1n << 14n, code: 'BUG 2', name: 'Bug Hunter Level 2', hash: '848f79194d4be5ff5f81505cbd0ce1e6' },
@@ -369,7 +364,7 @@ function defaultAvatar(user) {
 }
 
 function getUserAvatar(user) {
-  return user.avatar ? cdnAsset('avatars', user.id, user.avatar, 512) : defaultAvatar(user);
+  return user.avatar ? cdnAsset('avatars', user.id, user.avatar, 256) : defaultAvatar(user);
 }
 
 function getUserBanner(user) {
@@ -403,6 +398,7 @@ function rememberPrimaryGuildTag(user) {
     tag: String(identity.tag),
     badge: identity.badge ? String(identity.badge) : ''
   };
+  if (guildTagCache.size >= MAX_CACHE_ENTRIES && !guildTagCache.has(tag.guildId)) guildTagCache.delete(guildTagCache.keys().next().value);
   guildTagCache.set(tag.guildId, tag);
   return tag;
 }
@@ -583,9 +579,7 @@ function getProfileFrame(user) {
 
 function renderProfileCosmeticMedia(cosmetic, className) {
   if (!cosmetic || (!cosmetic.animated && !cosmetic.static)) return '';
-  const source = state.settings.reduceMotion
-    ? cosmetic.static || cosmetic.animated
-    : cosmetic.animated || cosmetic.static;
+  const source = cosmetic.static || cosmetic.animated;
   const data = cosmetic.animated
     ? ` data-static-url="${escapeAttr(cosmetic.static || cosmetic.animated)}" data-animated-url="${escapeAttr(cosmetic.animated)}"`
     : '';
@@ -593,9 +587,9 @@ function renderProfileCosmeticMedia(cosmetic, className) {
     const poster = cosmetic.static && cosmetic.static !== cosmetic.animated
       ? ` poster="${escapeAttr(cosmetic.static)}"`
       : '';
-    return `<video class="${escapeAttr(className)}" src="${escapeAttr(cosmetic.animated || source)}"${poster} muted loop playsinline preload="metadata" data-motion-video data-animated-url="${escapeAttr(cosmetic.animated || source)}"${state.settings.reduceMotion ? '' : ' autoplay'}></video>`;
+    return `<video class="${escapeAttr(className)}" src="${escapeAttr(cosmetic.animated || source)}"${poster} muted loop playsinline preload="metadata" data-motion-video data-animated-url="${escapeAttr(cosmetic.animated || source)}"></video>`;
   }
-  return `<img class="${escapeAttr(className)}" src="${escapeAttr(source)}" alt="" draggable="false"${data}>`;
+  return `<img class="${escapeAttr(className)}" src="${escapeAttr(source)}" alt="" loading="lazy" decoding="async" draggable="false"${data}>`;
 }
 
 function renderUserCosmetics(user) {
@@ -625,12 +619,10 @@ function renderUserCosmetics(user) {
       detail: nameplate?.skuId ? `SKU ${nameplate.skuId}` : ''
     }
   ];
+  const count = [effect, frame, decoration, nameplate].filter(Boolean).length;
   return `
-    <section class="cosmetics-section" aria-label="Profile cosmetics">
-      <div class="section-title-row">
-        <h3>Profile cosmetics</h3>
-        <span>${[effect, frame, decoration, nameplate].filter(Boolean).length} returned</span>
-      </div>
+    <details class="cosmetics-section data-disclosure"${count ? ' open' : ''}>
+      <summary><span>Profile cosmetics</span><span class="disclosure-meta">${count} returned</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="cosmetics-grid">
         ${entries.map(entry => `
           <div class="cosmetic-card">
@@ -640,7 +632,7 @@ function renderUserCosmetics(user) {
           </div>
         `).join('')}
       </div>
-    </section>
+    </details>
   `;
 }
 
@@ -688,31 +680,30 @@ function bannerStyle(asset) {
 
 function mediaSource(asset) {
   if (!asset) return '';
-  return asset.animated && !state.settings.reduceMotion ? asset.animated : asset.static || asset.animated || '';
+  return asset.static || asset.animated || '';
 }
 
 function renderBadge(badge) {
   const src = badge.src || (badge.hash ? badgeIconUrl(badge.hash) : '');
-  const fallback = badge.fallback ? ` data-fallback="${escapeAttr(badge.fallback)}"` : '';
   const symbolicIcon = badge.iconType === 'verified-bot'
     ? '<span class="badge-symbol badge-symbol--verified-bot" aria-hidden="true"><span>&#10003;</span></span>'
     : badge.iconType === 'bot-account'
       ? '<span class="badge-symbol badge-symbol--bot-account" aria-hidden="true"><span class="bot-antenna"></span><span class="bot-face"><span></span><span></span></span></span>'
       : '';
   const icon = symbolicIcon || (src
-    ? `<img class="badge-img" src="${escapeAttr(src)}" alt="" loading="lazy" draggable="false"${fallback}>`
+    ? `<img class="badge-img" src="${escapeAttr(src)}" alt="" loading="lazy" decoding="async" draggable="false" data-fallback-label="${escapeAttr(badge.code.slice(0, 4))}">`
     : `<span class="badge-fallback" aria-hidden="true">${escapeHTML(badge.code.slice(0, 4))}</span>`);
   const detail = badge.detail ? `<span class="badge-detail">${escapeHTML(badge.detail)}</span>` : '';
   const kind = badge.kind ? ` badge--${String(badge.kind).replace(/[^a-z0-9_-]/gi, '')}` : '';
   const title = badge.detail ? `${badge.name} — ${badge.detail}` : badge.name;
   return `
-    <span class="badge${kind}" role="img" aria-label="${escapeAttr(title)}" tabindex="0">
+    <button type="button" class="badge${kind}" aria-label="${escapeAttr(title)}" aria-expanded="false">
       <span class="badge-icon">${icon}</span>
       <span class="badge-copy">
         <span class="badge-label">${escapeHTML(badge.name)}</span>
         ${detail}
       </span>
-    </span>
+    </button>
   `;
 }
 
@@ -1034,13 +1025,10 @@ function renderUserApiDetails(user, guildDetails = null) {
   ];
 
   return `
-    <section class="api-details" aria-label="API profile fields">
-      <div class="section-title-row">
-        <h3>API profile fields</h3>
-        <span>not badges</span>
-      </div>
+    <details class="api-details data-disclosure">
+      <summary><span>API profile fields</span><span class="disclosure-meta">${lines.length} fields</span><span class="chevron" aria-hidden="true"></span></summary>
       <div class="api-grid">${lines.join('')}</div>
-    </section>
+    </details>
   `;
 }
 
@@ -1052,8 +1040,8 @@ function renderRawBlock(data) {
         <span>Raw JSON</span>
         <span class="chevron" aria-hidden="true"></span>
       </summary>
-      <pre class="copyable raw-copy" role="button" tabindex="0" title="Click to copy raw JSON"
-        data-action="copy" data-copy="${escapeAttr(json)}">${escapeHTML(json)}</pre>
+      <pre class="copyable raw-copy" role="button" tabindex="0" aria-label="Copy raw JSON" title="Click or press Enter to copy raw JSON"
+        data-action="copy-json">${escapeHTML(json)}</pre>
     </details>
   `;
 }
@@ -1069,6 +1057,7 @@ function renderUserCard(user, guildDetails = null) {
   const tag = user.discriminator && user.discriminator !== '0' ? `${user.username}#${user.discriminator}` : `@${user.username}`;
   const accent = normalizeApiColor(user.accent_color);
   const flags = user.public_flags ?? user.flags ?? 0;
+  const presence = getUserPresence(user);
   const actions = [
     { label: 'Share lookup', action: 'share-lookup' },
     avatar.original && { label: 'Open avatar', href: avatar.original },
@@ -1081,14 +1070,15 @@ function renderUserCard(user, guildDetails = null) {
     <article class="profile-card"${profileAccentStyle(accent)}>
       ${profileEffect ? `<div class="profile-effect-layer" aria-hidden="true">${renderProfileCosmeticMedia(profileEffect, 'profile-effect-media')}</div>` : ''}
       ${profileFrame ? `<div class="profile-frame-layer" aria-hidden="true">${renderProfileCosmeticMedia(profileFrame, 'profile-frame-media')}</div>` : ''}
-      <div class="media-banner" style="${bannerStyle(banner)}"
+      <div class="media-banner${banner.original ? '' : ' media-banner--fallback'}" style="${bannerStyle(banner)}"
         ${banner.animated ? `role="img" tabindex="0" aria-label="Animated profile banner of ${escapeAttr(displayName)}" data-static-url="${escapeAttr(banner.static)}" data-animated-url="${escapeAttr(banner.animated)}"` : ''}></div>
       <div class="identity-block">
-        <div class="avatar-wrap avatar-wrap--interactive" role="button" tabindex="0" aria-label="Surprise ${escapeAttr(displayName)}'s profile picture">
-          <img class="avatar-img" src="${escapeAttr(mediaSource(avatar))}" alt="Avatar of ${escapeAttr(displayName)}" draggable="false"
+        <div class="avatar-anchor"><button type="button" class="avatar-wrap avatar-wrap--interactive" aria-label="Animate ${escapeAttr(displayName)}'s profile picture">
+          <img class="avatar-img" src="${escapeAttr(mediaSource(avatar))}" alt="Avatar of ${escapeAttr(displayName)}" width="118" height="118" decoding="async" draggable="false"
             ${avatar.animated ? `data-static-url="${escapeAttr(avatar.static)}" data-animated-url="${escapeAttr(avatar.animated)}"` : ''}>
           ${decoration ? `<img class="avatar-decoration" src="${escapeAttr(decoration)}" alt="" loading="lazy" draggable="false">` : ''}
-        </div>
+          ${presence.status ? `<span class="avatar-presence avatar-presence--${presence.status}" aria-hidden="true"></span>` : ''}
+        </button></div>
         <div class="identity-copy">
           <h2>${escapeHTML(displayName)}</h2>
           <p>${escapeHTML(tag)}</p>
@@ -1132,7 +1122,7 @@ function renderFeaturePill(feature, active = false) {
   const label = formatFeatureName(feature);
   const description = featureDescription(feature);
   return `
-    <button type="button" class="feature-pill${active ? ' is-active' : ''}" data-action="feature-detail"
+    <button type="button" class="feature-pill${active ? ' is-active' : ''}" aria-pressed="${active}" data-action="feature-detail"
       data-feature="${escapeAttr(feature)}"
       data-feature-label="${escapeAttr(label)}"
       data-feature-description="${escapeAttr(description)}">
@@ -1280,8 +1270,6 @@ function renderError(error, mode = state.mode) {
 function setResult(html, className = '') {
   const card = $('#resultCard');
   if (!card) return;
-  stopAvatarMotion();
-  stopCardReveal();
   card.className = `panel result-panel ${className}`.trim();
   card.setAttribute('aria-busy', className === 'loading' ? 'true' : 'false');
   card.innerHTML = html;
@@ -1290,9 +1278,8 @@ function setResult(html, className = '') {
   if (accent) card.style.setProperty('--profile-accent-rgb', accent);
   else card.style.removeProperty('--profile-accent-rgb');
   requestAnimationFrame(() => card.classList.add('is-ready'));
-  wireResultMedia(card);
-  wireAvatarMotion(card);
-  wireCardReveal(document);
+  media?.bind(card);
+  effects?.refresh();
 }
 
 function setMode(mode, reset = true, announceChange = true) {
@@ -1306,6 +1293,7 @@ function setMode(mode, reset = true, announceChange = true) {
     setSearchLoading(false);
   }
   state.mode = mode;
+  $('#lookupPanel')?.setAttribute('aria-labelledby', `${mode}Tab`);
   $$('.mode-btn').forEach(button => {
     const active = button.dataset.mode === mode;
     button.classList.toggle('is-active', active);
@@ -1354,7 +1342,7 @@ function syncSearchControls(forceError = false) {
   const raw = input.value.trim();
   const id = extractSnowflake(raw);
   if (clearButton) {
-    clearButton.disabled = !raw;
+    clearButton.disabled = !raw && !state.isSearching;
     clearButton.textContent = state.isSearching ? 'Cancel' : 'Clear';
   }
 
@@ -1386,7 +1374,7 @@ function setSearchLoading(isLoading) {
     button.disabled = state.isSearching;
     button.classList.toggle('is-loading', state.isSearching);
   }
-  if (label) label.textContent = state.isSearching ? 'Searching' : 'Search';
+  if (label) label.textContent = state.isSearching ? 'Looking up…' : 'Look up ID';
   if (input) input.setAttribute('aria-busy', state.isSearching ? 'true' : 'false');
   syncSearchControls();
 }
@@ -1552,32 +1540,75 @@ function setCaptchaFeedback(message = '', tone = '') {
   if (!feedback) return;
   feedback.textContent = message;
   feedback.dataset.tone = tone;
+  const retry = $('[data-action="retry-captcha"]');
+  if (retry) retry.hidden = tone !== 'error';
 }
 
-function waitForTurnstile(timeoutMs = 10000) {
-  if (window.turnstile?.render) return Promise.resolve(window.turnstile);
-  return new Promise((resolve, reject) => {
-    const started = Date.now();
-    const check = () => {
-      if (window.turnstile?.render) {
-        resolve(window.turnstile);
-        return;
-      }
-      if (Date.now() - started >= timeoutMs) {
-        reject(new Error('The verification widget could not be loaded. Check your connection and try again.'));
-        return;
-      }
-      setTimeout(check, 80);
-    };
-    check();
+function retryCaptcha() {
+  if (!state.captcha.pendingPromise) return;
+  $('[data-action="cancel-captcha"]')?.focus({ preventScroll: true });
+  const challengeId = state.captcha.challengeId;
+  state.captcha.verifyController?.abort();
+  state.captcha.verifyController = null;
+  if (state.captcha.widgetId != null) {
+    try { window.turnstile?.remove(state.captcha.widgetId); } catch {}
+    state.captcha.widgetId = null;
+  }
+  prepareCaptchaWidget(challengeId).catch(error => {
+    if (challengeId === state.captcha.challengeId) setCaptchaFeedback(error.message, 'error');
   });
 }
 
+let turnstileLoader;
+function waitForTurnstile(timeoutMs = 12000) {
+  if (window.turnstile?.render) return Promise.resolve(window.turnstile);
+  if (turnstileLoader) return turnstileLoader;
+  turnstileLoader = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const finish = error => {
+      clearTimeout(timer);
+      script.onload = script.onerror = null;
+      if (error) { script.remove(); reject(error); }
+      else resolve(window.turnstile);
+    };
+    const timer = setTimeout(() => finish(new Error('Verification could not load. Check your connection and try again.')), timeoutMs);
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.onload = () => finish(window.turnstile?.render ? null : new Error('Verification is unavailable. Please retry.'));
+    script.onerror = () => finish(new Error('Verification could not load. Check your connection and try again.'));
+    document.head.append(script);
+  }).catch(error => { turnstileLoader = null; throw error; });
+  return turnstileLoader;
+}
+
+async function fetchWithTimeout(url, options = {}, timeout = 15000) {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  let timedOut = false;
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener('abort', cancel, { once: true });
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeout);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    // Consume the response under the same deadline, including a stalled response body.
+    const body = await response.text();
+    return { response, body };
+  } catch (error) {
+    if (timedOut) throw new Error('The request took too long. Please try again.');
+    if (error.name === 'TypeError') throw new Error('The lookup service could not be reached. Check your connection and try again.');
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener('abort', cancel);
+  }
+}
+
 async function getCaptchaConfig() {
-  const response = await fetch(`${API_BASE}/captcha/config`, { cache: 'no-store' });
-  const data = await response.json().catch(() => ({}));
+  const { response, body } = await fetchWithTimeout(`${API_BASE}/captcha/config`, { cache: 'no-store' });
+  let data = {};
+  try { data = JSON.parse(body) || {}; } catch {}
   if (!response.ok || !data.enabled || !data.site_key) {
-    throw new Error(data.message || 'Human verification is not configured on the API worker.');
+    throw new Error(data.message || data.error || 'Human verification is not configured on the API worker.');
   }
   return data;
 }
@@ -1590,6 +1621,12 @@ function closeCaptcha(success = false) {
     dialog.setAttribute('inert', '');
   }
   document.body.classList.remove('captcha-open');
+  for (const element of state.captcha.inertElements || []) element.removeAttribute('inert');
+  state.captcha.inertElements = [];
+  const returnFocus = state.captcha.returnFocus;
+  state.captcha.returnFocus = null;
+  if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+  effects?.suspend(false);
   state.captcha.challengeId += 1;
   state.captcha.verifyController?.abort();
   state.captcha.verifyController = null;
@@ -1612,23 +1649,24 @@ async function verifyCaptchaToken(challengeToken, challengeId) {
   state.captcha.verifyController = controller;
   setCaptchaFeedback('Verifying securely...', 'info');
   try {
-    const response = await fetch(`${API_BASE}/captcha/verify`, {
+    const { response, body } = await fetchWithTimeout(`${API_BASE}/captcha/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token: challengeToken }),
       signal: controller.signal
     });
-    const data = await response.json().catch(() => ({}));
-    if (challengeId !== state.captcha.challengeId || !state.captcha.pendingPromise) return;
-    if (!response.ok || !data.session_token || !data.expires_at) {
-      throw new Error(data.message || 'Verification was not accepted. Please try again.');
+    let data = {};
+    try { data = JSON.parse(body) || {}; } catch {}
+    if (controller.signal.aborted || state.captcha.verifyController !== controller || challengeId !== state.captcha.challengeId || !state.captcha.pendingPromise) return;
+    if (!response.ok || typeof data.session_token !== 'string' || !data.session_token || !Number.isFinite(data.expires_at) || data.expires_at <= Date.now()) {
+      throw new Error(data.message || data.error || 'Verification was not accepted. Please try again.');
     }
     saveCaptchaSession(data.session_token, data.expires_at);
     setCaptchaFeedback('Verified. Continuing your lookup...', 'success');
     announce('Human verification complete', 'ok');
     closeCaptcha(true);
   } catch (error) {
-    if (error.name === 'AbortError') return;
+    if (error.name === 'AbortError' || controller.signal.aborted || state.captcha.verifyController !== controller) return;
     setCaptchaFeedback(error.message || 'Verification failed. Please try again.', 'error');
     if (state.captcha.widgetId != null && window.turnstile?.reset) {
       try {
@@ -1670,6 +1708,11 @@ function requestCaptchaChallenge() {
   });
   state.captcha.challengeId += 1;
   const challengeId = state.captcha.challengeId;
+  state.captcha.returnFocus = document.activeElement;
+  state.captcha.inertElements = $$('body > header, body > main, .quick-actions, #settingsPanel, body > footer')
+    .filter(element => !element.hasAttribute('inert'));
+  state.captcha.inertElements.forEach(element => element.setAttribute('inert', ''));
+  effects?.suspend(true);
   dialog.hidden = false;
   dialog.removeAttribute('inert');
   dialog.setAttribute('aria-hidden', 'false');
@@ -1684,13 +1727,17 @@ function requestCaptchaChallenge() {
 async function fetchDiscord(mode, id, signal) {
   const cacheKey = `${mode}:${id}:v${DISCORD_API_VERSION}`;
   const cached = cache.get(cacheKey);
-  if (cached && Date.now() - cached.time < CACHE_TTL_MS) return cached.data;
+  if (cached && Date.now() - cached.time < CACHE_TTL_MS) {
+    cache.delete(cacheKey);
+    cache.set(cacheKey, cached);
+    return cached.data;
+  }
+  cache.delete(cacheKey);
 
   const path = mode === 'guild' ? `guilds/${id}?with_counts=true` : `users/${id}`;
   const captchaSession = getCaptchaSessionToken();
   const headers = captchaSession ? { 'X-Captcha-Session': captchaSession } : {};
-  const response = await fetch(`${API_BASE}/${path}`, { signal, headers });
-  const body = await response.text();
+  const { response, body } = await fetchWithTimeout(`${API_BASE}/${path}`, { signal, headers });
   let data = null;
   try {
     data = body ? JSON.parse(body) : null;
@@ -1705,12 +1752,13 @@ async function fetchDiscord(mode, id, signal) {
     throw error;
   }
 
-  if (!data || typeof data !== 'object') {
+  if (!data || typeof data !== 'object' || Array.isArray(data) || String(data.id) !== id) {
     const error = new Error('Discord returned an empty or invalid JSON response.');
     error.body = body;
     throw error;
   }
 
+  if (cache.size >= MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
   cache.set(cacheKey, { time: Date.now(), data });
   return data;
 }
@@ -1772,6 +1820,21 @@ async function runSearch({ moveFocus = false } = {}) {
   input.value = id;
   syncSearchControls();
 
+  if (window.location.protocol === 'file:') {
+    const online = new URL('https://discord-id-hub.info/');
+    online.searchParams.set('type', mode);
+    online.searchParams.set('id', id);
+    setResult(`<div class="empty-state">
+      <span class="empty-glyph" aria-hidden="true">ID</span>
+      <h2>Continue with the online lookup</h2>
+      <p>This page was opened as a local file. Protected lookups need HTTP(S); continue on the live site to search this ID.</p>
+      <a class="primary-btn" href="${escapeAttr(online.href)}" target="_blank" rel="noopener">Look up this ID online</a>
+    </div>`, 'empty');
+    revealResult(moveFocus);
+    announce('Local controls are available. Use the online lookup to search this ID.', 'info');
+    return;
+  }
+
   if (!getCaptchaSessionToken()) {
     if (state.abortController) state.abortController.abort();
     state.abortController = null;
@@ -1795,14 +1858,20 @@ async function runSearch({ moveFocus = false } = {}) {
     const data = await fetchDiscord(mode, id, state.abortController.signal);
     if (token !== state.currentToken || mode !== state.mode) return;
     if (mode === 'user') rememberPrimaryGuildTag(data);
-    const primaryGuildDetails = mode === 'user'
-      ? await fetchPrimaryGuildDetails(data, state.abortController.signal)
-      : null;
-    if (token !== state.currentToken || mode !== state.mode) return;
-    setResult(mode === 'guild' ? renderGuildCard(data) : renderUserCard(data, primaryGuildDetails), `${mode}-result`);
+    setResult(mode === 'guild' ? renderGuildCard(data) : renderUserCard(data), `${mode}-result`);
     recordRecentSearch(mode, id, data);
+    setSearchLoading(false);
     revealResult(moveFocus);
     announce(`${MODE_CONFIG[mode].label} loaded`, 'ok');
+    // A server tag's display name is optional enrichment; never hold up the profile for it.
+    if (mode === 'user') {
+      const guild = await fetchPrimaryGuildDetails(data, state.abortController.signal);
+      if (guild && token === state.currentToken && mode === state.mode) {
+        const badge = getPrimaryGuildBadge(data, guild);
+        const target = $('.badge-strip .badge--server');
+        if (badge && target) target.outerHTML = renderBadge(badge);
+      }
+    }
   } catch (error) {
     if (error.name === 'AbortError') return;
     if (token !== state.currentToken || mode !== state.mode) return;
@@ -1865,8 +1934,7 @@ function useExample() {
 function flashCopied(target) {
   if (!target) return;
   target.classList.remove('is-copied');
-  void target.offsetWidth;
-  target.classList.add('is-copied');
+  requestAnimationFrame(() => { if (target.isConnected) target.classList.add('is-copied'); });
   clearTimeout(target.copyFeedbackTimer);
   target.copyFeedbackTimer = setTimeout(() => target.classList.remove('is-copied'), 2000);
 }
@@ -1899,399 +1967,13 @@ async function copyText(text, label = 'Copied', target = null) {
   }
 }
 
-function setAnimatedMediaState(element, animated) {
-  if (!element) return;
-  if (element.matches('video[data-motion-video]')) {
-    if (animated) {
-      const play = element.play();
-      if (play?.catch) play.catch(() => {});
-    } else {
-      element.pause();
-      try { element.currentTime = 0; } catch {}
-    }
-    return;
-  }
-  const source = animated ? element.dataset.animatedUrl : element.dataset.staticUrl;
-  if (!source) return;
-  if (element.tagName === 'IMG') element.src = source;
-  else element.style.backgroundImage = `url('${source}')`;
-}
-
-function syncAnimatedMedia(root = document) {
-  $$('[data-animated-url]', root).forEach(element => {
-    setAnimatedMediaState(element, !state.settings.reduceMotion);
-  });
-}
-
-function wireResultMedia(root = document) {
-  $$('[data-animated-url]', root).forEach(element => {
-    if (element.dataset.mediaBound === '1') return;
-    element.dataset.mediaBound = '1';
-    const layer = element.closest('.profile-effect-layer, .profile-frame-layer');
-    const trigger = element.closest('.avatar-wrap') || layer?.closest('.profile-card') || element;
-    const showAnimated = () => {
-      if (state.settings.reduceMotion) setAnimatedMediaState(element, true);
-    };
-    const showStatic = () => {
-      if (state.settings.reduceMotion) setAnimatedMediaState(element, false);
-    };
-    trigger.addEventListener('pointerenter', showAnimated);
-    trigger.addEventListener('pointerleave', showStatic);
-    trigger.addEventListener('focusin', showAnimated);
-    trigger.addEventListener('focusout', showStatic);
-  });
-
-  syncAnimatedMedia(root);
-
-  $$('.badge-img', root).forEach(image => {
-    if (image.dataset.fallbackBound === '1') return;
-    image.dataset.fallbackBound = '1';
-    image.addEventListener('error', () => {
-      const fallback = image.dataset.fallback;
-      if (fallback && image.src !== fallback) {
-        image.src = fallback;
-        return;
-      }
-      const icon = image.closest('.badge-icon');
-      if (!icon) return;
-      image.remove();
-      icon.innerHTML = '<span class="badge-fallback" aria-hidden="true">BADGE</span>';
-    });
-  });
-}
-
-function clearAvatarMotionClasses(avatar) {
-  if (!avatar) return;
-  avatar.classList.remove('avatar-arrival', 'avatar-surprised', 'avatar-stress-adaptive', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
-  ['--stress-x', '--stress-y', '--stress-rotate', '--stress-saturation', '--stress-brightness']
-    .forEach(property => avatar.style.removeProperty(property));
-}
-
-function proximityStressIntensity(distance) {
-  const range = AVATAR_STRESS_START_DISTANCE - AVATAR_STRESS_FULL_DISTANCE;
-  const normalized = Math.max(0, Math.min(1, (AVATAR_STRESS_START_DISTANCE - Number(distance)) / range));
-  return normalized * normalized * (3 - 2 * normalized);
-}
-
-function stopAvatarMotion() {
-  if (typeof state.avatarMotionCleanup === 'function') state.avatarMotionCleanup();
-  state.avatarMotionCleanup = null;
-}
-
-function stopCardReveal() {
-  if (typeof state.cardRevealCleanup === 'function') state.cardRevealCleanup();
-  state.cardRevealCleanup = null;
-}
-
-function cardRevealIntensity(distance) {
-  const normalized = Math.max(0, Math.min(1, (PROXIMITY_REVEAL_DISTANCE - Number(distance)) / PROXIMITY_REVEAL_DISTANCE));
-  return normalized * normalized * (3 - 2 * normalized);
-}
-
-function wireCardReveal(root = document) {
-  const canTrackPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  if (!canTrackPointer || state.settings.reduceMotion || document.querySelector('.proximity-border-layer')) return;
-
-  const canvas = document.createElement('canvas');
-  canvas.className = 'proximity-border-layer';
-  canvas.setAttribute('aria-hidden', 'true');
-  document.body.appendChild(canvas);
-  const context = canvas.getContext('2d');
-  if (!context) {
-    canvas.remove();
-    return;
-  }
-
-  let surfaces = [];
-  let pointerX = null;
-  let pointerY = null;
-  let frame = 0;
-  let refreshFrame = 0;
-
-  const resizeCanvas = () => {
-    const scale = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.max(1, Math.round(window.innerWidth * scale));
-    canvas.height = Math.max(1, Math.round(window.innerHeight * scale));
-    canvas.style.width = `${window.innerWidth}px`;
-    canvas.style.height = `${window.innerHeight}px`;
-    context.setTransform(scale, 0, 0, scale, 0, 0);
-  };
-
-  const collectSurfaces = () => {
-    refreshFrame = 0;
-    surfaces = $$(PROXIMITY_SURFACE_SELECTOR).filter(element => {
-      if (!(element instanceof HTMLElement) || element === canvas || element.hidden) return false;
-      if (element.closest('[hidden], [inert], [aria-hidden="true"]')) return false;
-      if (element.closest('#helpPanel, #settingsPanel, #captchaDialog')) return false;
-      const style = getComputedStyle(element);
-      const opacity = Number.parseFloat(style.opacity);
-      if (style.display === 'none' || style.visibility === 'hidden' || (Number.isFinite(opacity) && opacity < .05)) return false;
-      if (!element.getClientRects().length) return false;
-      const widths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
-        .map(value => Number.parseFloat(value) || 0);
-      return widths.some(width => width > 0);
-    }).map(element => {
-      const style = getComputedStyle(element);
-      const accent = style.getPropertyValue('--profile-accent-rgb').trim() || '88, 101, 242';
-      return {
-        element,
-        radius: Math.max(0, Number.parseFloat(style.borderTopLeftRadius) || 0),
-        accent: /^\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}$/.test(accent) ? accent : '88, 101, 242'
-      };
-    });
-  };
-
-  const scheduleSurfaceRefresh = () => {
-    if (refreshFrame) return;
-    refreshFrame = requestAnimationFrame(collectSurfaces);
-  };
-
-  const roundedRect = (x, y, width, height, radius) => {
-    const safeRadius = Math.max(0, Math.min(radius, width / 2, height / 2));
-    if (typeof context.roundRect === 'function') {
-      context.beginPath();
-      context.roundRect(x, y, width, height, safeRadius);
-      return;
-    }
-    context.beginPath();
-    context.moveTo(x + safeRadius, y);
-    context.arcTo(x + width, y, x + width, y + height, safeRadius);
-    context.arcTo(x + width, y + height, x, y + height, safeRadius);
-    context.arcTo(x, y + height, x, y, safeRadius);
-    context.arcTo(x, y, x + width, y, safeRadius);
-    context.closePath();
-  };
-
-  const drawReveal = () => {
-    frame = 0;
-    context.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    if (pointerX == null || pointerY == null) return;
-
-    surfaces.forEach(surface => {
-      if (!surface.element.isConnected) return;
-      const rect = surface.element.getBoundingClientRect();
-      if (rect.width < 3 || rect.height < 3 || rect.bottom < -2 || rect.top > window.innerHeight + 2 || rect.right < -2 || rect.left > window.innerWidth + 2) return;
-      const distanceX = Math.max(rect.left - pointerX, 0, pointerX - rect.right);
-      const distanceY = Math.max(rect.top - pointerY, 0, pointerY - rect.bottom);
-      const strength = cardRevealIntensity(Math.hypot(distanceX, distanceY));
-      if (strength <= .002) return;
-
-      const gradient = context.createRadialGradient(pointerX, pointerY, 0, pointerX, pointerY, PROXIMITY_REVEAL_DISTANCE);
-      gradient.addColorStop(0, `rgba(${surface.accent}, 1)`);
-      gradient.addColorStop(.24, `rgba(${surface.accent}, .92)`);
-      gradient.addColorStop(1, `rgba(${surface.accent}, 0)`);
-      context.save();
-      context.globalAlpha = Math.min(1, .28 + strength * .72);
-      context.strokeStyle = gradient;
-      context.lineWidth = 1.1 + strength * 1.15;
-      context.shadowBlur = 7 + strength * 8;
-      context.shadowColor = `rgba(${surface.accent}, ${(.28 + strength * .5).toFixed(3)})`;
-      roundedRect(rect.left + .5, rect.top + .5, Math.max(0, rect.width - 1), Math.max(0, rect.height - 1), surface.radius);
-      context.stroke();
-      context.restore();
-    });
-  };
-
-  const trackPointer = event => {
-    if (event.pointerType === 'touch') return;
-    pointerX = event.clientX;
-    pointerY = event.clientY;
-    if (!frame) frame = requestAnimationFrame(drawReveal);
-  };
-
-  const resetPointer = () => {
-    pointerX = null;
-    pointerY = null;
-    if (!frame) frame = requestAnimationFrame(drawReveal);
-  };
-
-  const handleScroll = () => {
-    if (!frame && pointerX != null) frame = requestAnimationFrame(drawReveal);
-  };
-
-  const observer = new MutationObserver(scheduleSurfaceRefresh);
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['class', 'hidden', 'inert', 'aria-hidden']
-  });
-  resizeCanvas();
-  collectSurfaces();
-  document.addEventListener('pointermove', trackPointer);
-  document.addEventListener('pointerleave', resetPointer);
-  window.addEventListener('blur', resetPointer);
-  window.addEventListener('resize', resizeCanvas);
-  window.addEventListener('scroll', handleScroll, { passive: true });
-
-  state.cardRevealCleanup = () => {
-    if (frame) cancelAnimationFrame(frame);
-    if (refreshFrame) cancelAnimationFrame(refreshFrame);
-    observer.disconnect();
-    document.removeEventListener('pointermove', trackPointer);
-    document.removeEventListener('pointerleave', resetPointer);
-    window.removeEventListener('blur', resetPointer);
-    window.removeEventListener('resize', resizeCanvas);
-    window.removeEventListener('scroll', handleScroll);
-    canvas.remove();
-  };
-}
-
-function wireAvatarMotion(root = document) {
-  const avatar = $('.avatar-wrap--interactive', root);
-  if (!avatar || state.settings.reduceMotion || avatar.dataset.motionBound === '1') return;
-
-  avatar.dataset.motionBound = '1';
-  const canTrackPointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  let frame = 0;
-  let pointerX = null;
-  let pointerY = null;
-  let intensity = 0;
-  let retreatX = 0;
-  let retreatY = 0;
-  let phase = 0;
-  let lastFrameTime = 0;
-
-  const clearStressVisuals = () => {
-    avatar.classList.remove('avatar-stress-adaptive', 'avatar-stress-1', 'avatar-stress-2', 'avatar-stress-3');
-    ['--stress-x', '--stress-y', '--stress-rotate', '--stress-saturation', '--stress-brightness']
-      .forEach(property => avatar.style.removeProperty(property));
-  };
-
-  const removeStress = () => {
-    intensity = 0;
-    retreatX = 0;
-    retreatY = 0;
-    clearStressVisuals();
-  };
-
-  const ensureStressFrame = () => {
-    if (frame) return;
-    lastFrameTime = performance.now();
-    frame = requestAnimationFrame(updateStress);
-  };
-
-  const updateStress = now => {
-    frame = 0;
-    const reacting = avatar.classList.contains('avatar-arrival') || avatar.classList.contains('avatar-surprised');
-    if (reacting) {
-      removeStress();
-      return;
-    }
-
-    const deltaSeconds = Math.min(Math.max((now - lastFrameTime) / 1000, 0), .05) || (1 / 60);
-    lastFrameTime = now;
-    let targetIntensity = 0;
-    let targetRetreatX = 0;
-    let targetRetreatY = 0;
-
-    if (pointerX != null && pointerY != null) {
-      const rect = avatar.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      const offsetX = centerX - pointerX;
-      const offsetY = centerY - pointerY;
-      const distance = Math.hypot(offsetX, offsetY);
-      const safeDistance = Math.max(distance, 1);
-      const centerDamping = Math.min(distance / 12, 1);
-      targetIntensity = proximityStressIntensity(distance);
-      const retreat = targetIntensity * 4.05 * centerDamping;
-      targetRetreatX = offsetX / safeDistance * retreat;
-      targetRetreatY = offsetY / safeDistance * retreat;
-    }
-
-    const intensityResponse = targetIntensity > intensity ? 11 : 7;
-    const intensityBlend = 1 - Math.exp(-deltaSeconds * intensityResponse);
-    const retreatBlend = 1 - Math.exp(-deltaSeconds * 12);
-    intensity += (targetIntensity - intensity) * intensityBlend;
-    retreatX += (targetRetreatX - retreatX) * retreatBlend;
-    retreatY += (targetRetreatY - retreatY) * retreatBlend;
-
-    if (intensity < .002 && targetIntensity === 0) {
-      removeStress();
-      return;
-    }
-
-    phase += deltaSeconds * (7 + intensity * 34);
-    const amplitude = intensity * (.45 + intensity * 2.75);
-    const jitterX = (Math.sin(phase * 1.13) + Math.sin(phase * 2.47) * .42) * amplitude;
-    const jitterY = (Math.cos(phase * 1.41) + Math.sin(phase * 2.13) * .36) * amplitude * .78;
-    const rotation = (Math.sin(phase * 1.73) * .85 + Math.cos(phase * 2.31) * .25)
-      * intensity * (.35 + intensity * 1.45);
-
-    avatar.classList.add('avatar-stress-adaptive');
-    avatar.style.setProperty('--stress-x', `${(retreatX + jitterX).toFixed(3)}px`);
-    avatar.style.setProperty('--stress-y', `${(retreatY + jitterY).toFixed(3)}px`);
-    avatar.style.setProperty('--stress-rotate', `${rotation.toFixed(3)}deg`);
-    avatar.style.setProperty('--stress-saturation', (1 + intensity * .12).toFixed(3));
-    avatar.style.setProperty('--stress-brightness', (1 + intensity * .04).toFixed(3));
-    frame = requestAnimationFrame(updateStress);
-  };
-
-  const queueStressUpdate = event => {
-    if (!canTrackPointer || event.pointerType === 'touch') return;
-    pointerX = event.clientX;
-    pointerY = event.clientY;
-    ensureStressFrame();
-  };
-
-  const resetPointer = () => {
-    pointerX = null;
-    pointerY = null;
-    ensureStressFrame();
-  };
-
-  const surprise = () => {
-    if (state.settings.reduceMotion) return;
-    avatar.classList.remove('avatar-arrival', 'avatar-surprised');
-    removeStress();
-    void avatar.offsetWidth;
-    avatar.classList.add('avatar-surprised');
-  };
-
-  const handleAvatarKey = event => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    surprise();
-  };
-
-  const handleAnimationEnd = event => {
-    if (event.target !== avatar) return;
-    if (event.animationName === 'avatarArrival') {
-      avatar.classList.remove('avatar-arrival');
-      if (pointerX != null) ensureStressFrame();
-    }
-    if (event.animationName === 'avatarSurprised') {
-      avatar.classList.remove('avatar-surprised');
-      if (pointerX != null) ensureStressFrame();
-    }
-  };
-
-  root.addEventListener('pointermove', queueStressUpdate);
-  root.addEventListener('pointerleave', resetPointer);
-  avatar.addEventListener('click', surprise);
-  avatar.addEventListener('keydown', handleAvatarKey);
-  avatar.addEventListener('animationend', handleAnimationEnd);
-  requestAnimationFrame(() => {
-    if (!state.settings.reduceMotion && avatar.isConnected) avatar.classList.add('avatar-arrival');
-  });
-
-  state.avatarMotionCleanup = () => {
-    if (frame) cancelAnimationFrame(frame);
-    root.removeEventListener('pointermove', queueStressUpdate);
-    root.removeEventListener('pointerleave', resetPointer);
-    avatar.removeEventListener('click', surprise);
-    avatar.removeEventListener('keydown', handleAvatarKey);
-    avatar.removeEventListener('animationend', handleAnimationEnd);
-    delete avatar.dataset.motionBound;
-    clearAvatarMotionClasses(avatar);
-  };
-}
-
 function handleFeature(button) {
   const detail = $('#featureDetail');
   if (!detail) return;
-  $$('.feature-pill').forEach(pill => pill.classList.toggle('is-active', pill === button));
+  $$('.feature-pill').forEach(pill => {
+    pill.classList.toggle('is-active', pill === button);
+    pill.setAttribute('aria-pressed', String(pill === button));
+  });
   detail.innerHTML = `<strong>${escapeHTML(button.dataset.featureLabel || button.dataset.feature || 'Feature')}</strong><span>${escapeHTML(button.dataset.featureDescription || '')}</span>`;
   announce(`${button.dataset.featureLabel || 'Feature'} selected`, 'info');
 }
@@ -2317,11 +1999,14 @@ function toggleHelp(force) {
   panel.classList.toggle('is-collapsed', !next);
   document.body.classList.toggle('help-hidden', !next);
   panel.setAttribute('aria-hidden', next ? 'false' : 'true');
+  panel.toggleAttribute('inert', !next);
+  if (!next && panel.contains(document.activeElement)) fab?.focus({ preventScroll: true });
   if (fab) {
     fab.setAttribute('aria-expanded', next ? 'true' : 'false');
     fab.setAttribute('aria-label', next ? 'Hide help' : 'Show help');
   }
   announce(next ? 'Help opened' : 'Help hidden', 'info');
+  effects?.refresh();
 }
 
 function toggleSettings(force, restoreFocus = false) {
@@ -2350,14 +2035,14 @@ function loadSettings() {
   } catch {
     stored = {};
   }
-  const prefersLight = window.matchMedia('(prefers-color-scheme: light)').matches;
   const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const storedTheme = stored.theme === 'light' || stored.theme === 'dark' ? stored.theme : '';
   state.settings = {
-    theme: storedTheme || (prefersLight ? 'light' : 'dark'),
-    reduceMotion: stored.reduceMotion ?? prefersReduced,
-    autoSearch: stored.autoSearch ?? true,
-    badgeLabels: stored.version === SETTINGS_VERSION ? stored.badgeLabels ?? false : false
+    theme: storedTheme || 'dark',
+    reduceMotion: prefersReduced || Boolean(stored.reduceMotion),
+    autoSearch: stored.autoSearch !== false,
+    badgeLabels: stored.version === SETTINGS_VERSION ? Boolean(stored.badgeLabels) : false,
+    pointerEffects: stored.pointerEffects !== false
   };
   applySettings(false);
 }
@@ -2371,7 +2056,7 @@ function saveSettings() {
 function applySettings(persist = true) {
   document.documentElement.dataset.theme = state.settings.theme;
   $$('meta[name="theme-color"]').forEach(meta => {
-    meta.content = state.settings.theme === 'light' ? '#f4f6fa' : '#111316';
+    meta.content = state.settings.theme === 'light' ? '#f4f6fa' : '#121214';
   });
   document.documentElement.classList.toggle('reduced-motion', Boolean(state.settings.reduceMotion));
   document.documentElement.classList.toggle('badge-labels-off', !state.settings.badgeLabels);
@@ -2379,18 +2064,14 @@ function applySettings(persist = true) {
   const reduceToggle = $('#reduceAnimToggle');
   const autoToggle = $('#autoSearchToggle');
   const badgeToggle = $('#badgeLabelToggle');
+  const pointerToggle = $('#pointerEffectsToggle');
   if (themeToggle) themeToggle.checked = state.settings.theme === 'light';
   if (reduceToggle) reduceToggle.checked = Boolean(state.settings.reduceMotion);
   if (autoToggle) autoToggle.checked = Boolean(state.settings.autoSearch);
   if (badgeToggle) badgeToggle.checked = Boolean(state.settings.badgeLabels);
-  if (state.settings.reduceMotion) {
-    stopAvatarMotion();
-    stopCardReveal();
-  } else {
-    wireAvatarMotion($('#resultCard'));
-    wireCardReveal(document);
-  }
-  syncAnimatedMedia(document);
+  if (pointerToggle) pointerToggle.checked = state.settings.pointerEffects;
+  effects?.refresh();
+  media?.sync();
   if (persist) saveSettings();
 }
 
@@ -2430,20 +2111,32 @@ function bindEvents() {
       if (button.dataset.mode !== state.mode) setMode(button.dataset.mode);
     });
     button.addEventListener('keydown', event => {
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const direction = event.key === 'ArrowRight' ? 1 : -1;
-      const target = buttons[(index + direction + buttons.length) % buttons.length];
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (index + direction + buttons.length) % buttons.length;
+      const target = buttons[next];
       target.focus();
       setMode(target.dataset.mode);
     });
   });
 
   document.addEventListener('click', event => {
+    const avatar = event.target.closest('.avatar-wrap--interactive');
+    if (avatar) effects?.react(avatar);
+    const badge = event.target.closest('button.badge');
+    if (badge) {
+      const expanded = badge.getAttribute('aria-expanded') !== 'true';
+      $$('button.badge[aria-expanded="true"]').forEach(item => item.setAttribute('aria-expanded', 'false'));
+      badge.setAttribute('aria-expanded', String(expanded));
+      badge.classList.toggle('is-dismissed', !expanded);
+    }
     const actionTarget = event.target.closest('[data-action]');
     if (!actionTarget) return;
     const action = actionTarget.dataset.action;
     if (action === 'copy') copyText(actionTarget.dataset.copy, 'Copied', actionTarget);
+    if (action === 'copy-json') copyText(actionTarget.textContent, 'JSON copied', actionTarget);
     if (action === 'clear-input') clearInput();
     if (action === 'use-example') useExample();
     if (action === 'retry') retryLastSearch();
@@ -2454,16 +2147,17 @@ function bindEvents() {
     if (action === 'share-lookup') shareCurrentLookup(actionTarget);
     if (action === 'close-settings') toggleSettings(false, true);
     if (action === 'cancel-captcha') closeCaptcha(false);
+    if (action === 'retry-captcha') retryCaptcha();
   });
 
   $('#helpFab')?.addEventListener('click', () => toggleHelp());
   $('#settingsFab')?.addEventListener('click', () => toggleSettings(undefined, true));
   $('#brandButton')?.addEventListener('click', () => {
+    if (state.settings.reduceMotion || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const mark = $('#brandMark');
     if (!mark) return;
     mark.classList.remove('logo-burst');
-    void mark.offsetWidth;
-    mark.classList.add('logo-burst');
+    requestAnimationFrame(() => mark.classList.add('logo-burst'));
     announce('Logo animation played', 'info');
   });
 
@@ -2491,12 +2185,38 @@ function bindEvents() {
     applySettings();
     announce(`Badge labels ${state.settings.badgeLabels ? 'shown' : 'hidden'}`, 'ok');
   });
+  $('#pointerEffectsToggle')?.addEventListener('change', event => {
+    state.settings.pointerEffects = event.target.checked;
+    applySettings();
+    announce(`Pointer effects ${state.settings.pointerEffects ? 'enabled' : 'disabled'}`, 'ok');
+  });
+
+  document.addEventListener('error', event => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement)) return;
+    if (image.classList.contains('badge-img')) {
+      const icon = image.closest('.badge-icon');
+      if (!icon) return;
+      const fallback = document.createElement('span');
+      fallback.className = 'badge-fallback';
+      fallback.textContent = image.dataset.fallbackLabel || '★';
+      fallback.setAttribute('aria-hidden', 'true');
+      image.replaceWith(fallback);
+    } else if (image.classList.contains('avatar-img')) {
+      const fallback = document.createElement('span');
+      fallback.className = 'avatar-img avatar-fallback';
+      fallback.textContent = 'ID';
+      fallback.setAttribute('aria-hidden', 'true');
+      image.replaceWith(fallback);
+    }
+  }, true);
 
   document.addEventListener('keydown', event => {
+    if (event.defaultPrevented || event.isComposing) return;
     const target = event.target;
     const tag = target && target.tagName ? target.tagName.toLowerCase() : '';
     const editing = tag === 'input' || tag === 'textarea' || target?.isContentEditable;
-    const keyboardCopyTarget = target?.closest?.('[data-action="copy"][role="button"]');
+    const keyboardCopyTarget = target?.closest?.('[data-action="copy"][role="button"], [data-action="copy-json"][role="button"]');
     const captchaDialog = $('#captchaDialog');
     const captchaOpen = captchaDialog?.getAttribute('aria-hidden') === 'false';
 
@@ -2520,11 +2240,14 @@ function bindEvents() {
 
     if (keyboardCopyTarget === target && (event.key === 'Enter' || event.key === ' ')) {
       event.preventDefault();
-      copyText(keyboardCopyTarget.dataset.copy, 'Copied', keyboardCopyTarget);
+      copyText(keyboardCopyTarget.dataset.action === 'copy-json' ? keyboardCopyTarget.textContent : keyboardCopyTarget.dataset.copy,
+        'Copied', keyboardCopyTarget);
       return;
     }
 
     if (event.key === 'Escape') {
+      $$('button.badge[aria-expanded="true"]').forEach(item => item.setAttribute('aria-expanded', 'false'));
+      target.closest?.('button.badge')?.classList.add('is-dismissed');
       if (captchaOpen) {
         closeCaptcha(false);
         return;
@@ -2534,7 +2257,7 @@ function bindEvents() {
       return;
     }
 
-    if ((event.key === '/' || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey))) && !editing) {
+    if ((event.key === '/' && !editing) || (event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey))) {
       event.preventDefault();
       input?.focus();
       input?.select();
@@ -2543,6 +2266,11 @@ function bindEvents() {
     }
 
     if (editing || event.altKey || event.ctrlKey || event.metaKey) return;
+
+    if (event.key.toLowerCase() === 's') {
+      event.preventDefault();
+      toggleSettings(undefined, true);
+    }
 
     if (event.key.toLowerCase() === 't') {
       event.preventDefault();
@@ -2565,19 +2293,40 @@ function bindEvents() {
   });
 
   document.addEventListener('pointerdown', event => {
+    if (!event.target.closest('button.badge')) {
+      $$('button.badge[aria-expanded="true"]').forEach(item => item.setAttribute('aria-expanded', 'false'));
+    }
     const panel = $('#settingsPanel');
     const fab = $('#settingsFab');
     if (!panel || panel.getAttribute('aria-hidden') === 'true') return;
     if (panel.contains(event.target) || fab?.contains(event.target)) return;
     toggleSettings(false);
   });
+  document.addEventListener('focusin', event => event.target.closest('button.badge')?.classList.remove('is-dismissed'));
+  document.addEventListener('pointerout', event => {
+    const badge = event.target.closest?.('button.badge');
+    if (badge && !(event.relatedTarget instanceof Node && badge.contains(event.relatedTarget))) badge.classList.remove('is-dismissed');
+  });
 }
 
 function init() {
+  document.title = `Discord ID Hub ${APP_VERSION}`;
+  bindEvents();
   loadSettings();
   loadRecentSearches();
   loadCaptchaSession();
-  bindEvents();
+  try {
+    if (typeof createMediaController === 'function') media = createMediaController(() => state.settings);
+  } catch (error) {
+    console.warn('Animated media is unavailable; lookup controls remain active.', error);
+  }
+  try {
+    if (typeof createEffects === 'function') effects = createEffects(() => state.settings);
+  } catch (error) {
+    console.warn('Pointer effects are unavailable; lookup controls remain active.', error);
+  }
+  window.addEventListener('pagehide', () => effects?.suspend(true));
+  window.addEventListener('pageshow', () => effects?.suspend(false));
   const sharedLookup = readLookupUrl();
   if (sharedLookup) {
     setMode(sharedLookup.mode, true, false);
@@ -2590,8 +2339,6 @@ function init() {
   setMode('user', true, false);
 }
 
-document.addEventListener('DOMContentLoaded', init);
-
-function refresh() {
-  location.reload();
-}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
+else init();
+})();

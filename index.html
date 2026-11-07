@@ -1,97 +1,115 @@
 <!doctype html>
-<html lang="en" class="badge-labels-off">
+<html lang="en" class="badge-labels-off" data-theme="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Unofficial Discord user and guild snowflake lookup powered by a token-safe proxy.">
-  <meta name="theme-color" content="#111316" media="(prefers-color-scheme: dark)">
-  <meta name="theme-color" content="#f4f6fa" media="(prefers-color-scheme: light)">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="A clear view of public Discord profiles and servers. Look up a snowflake ID, explore badges and media, and share what you find.">
+  <meta name="theme-color" content="#121214">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="Discord API Search v1.2">
+  <meta property="og:title" content="Discord ID Hub v1.5">
   <meta property="og:description" content="Fast public Discord user and server snowflake lookup.">
   <meta property="og:url" content="https://discord-id-hub.info/">
-  <meta property="og:image" content="https://discord-id-hub.info/resources/discord-api-search-og.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Discord API Search v1.2 public user and server lookup">
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Discord API Search v1.2">
+  <meta property="og:image" content="https://discord-id-hub.info/assets/images/favicon-256.png">
+  <meta property="og:image:width" content="256">
+  <meta property="og:image:height" content="256">
+  <meta property="og:image:alt" content="Discord ID Hub">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Discord ID Hub v1.5">
   <meta name="twitter:description" content="Fast public Discord user and server snowflake lookup.">
-  <meta name="twitter:image" content="https://discord-id-hub.info/resources/discord-api-search-og.png">
+  <meta name="twitter:image" content="https://discord-id-hub.info/assets/images/favicon-256.png">
   <link rel="canonical" href="https://discord-id-hub.info/">
-  <title>Discord API Search</title>
+  <title>Discord ID Hub v1.5</title>
   <link rel="preconnect" href="https://cdn.discordapp.com">
   <link rel="preconnect" href="https://discord-api-search.bbrraaggee.workers.dev">
   <link rel="preconnect" href="https://challenges.cloudflare.com">
-  <link rel="stylesheet" href="style.css">
-  <link rel="icon" type="image/png" sizes="32x32" href="resources/1112-favicon.png">
-  <link rel="icon" type="image/png" sizes="64x64" href="resources/1113-favicon.png">
-  <link rel="icon" type="image/png" sizes="128x128" href="resources/1114-favicon.png">
-  <link rel="icon" type="image/png" sizes="256x256" href="resources/1115-favicon.png">
+  <link rel="stylesheet" href="assets/css/app.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="assets/images/favicon-64.png">
+  <link rel="icon" type="image/png" sizes="128x128" href="assets/images/favicon-128.png">
+  <link rel="icon" type="image/png" sizes="256x256" href="assets/images/favicon-256.png">
 </head>
-<body>
+<body class="help-hidden">
   <a class="skip-link" href="#mainContent">Skip to lookup</a>
 
   <header class="topbar">
-    <button class="brand" id="brandButton" type="button" aria-label="Animate Discord API Search logo" onclick="refresh()">
+    <button class="brand" id="brandButton" type="button" aria-label="Animate Discord ID Hub logo">
       <span class="brand-mark" id="brandMark" aria-hidden="true">
-        <img src="resources/48159-spyglass.png" alt="">
-        <img src="resources/9422-id.png" alt="">
+        <img src="assets/images/spyglass.png" width="32" height="32" alt="">
+        <img src="assets/images/id-card.png" width="32" height="32" alt="">
       </span>
       <span class="brand-copy">
-        <span class="brand-title">Discord API Search v1.2</span>
-        <span class="brand-subtitle">Unofficial snowflake lookup</span>
+        <span class="brand-title">Discord ID Hub</span>
+        <span class="brand-subtitle">The public picture.</span>
       </span>
     </button>
 
     <nav class="top-actions" aria-label="External resources">
-      <span class="version-pill" title="App and Discord REST API versions">v1.2 / API v10</span>
-      <a class="nav-btn" href="https://docs.discord.com/developers/reference#api-reference" target="_blank" rel="noopener">API Reference</a>
-      <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source</a>
+      <span class="version-pill" title="App v1.5 / Discord REST API v10">v1.5 <span aria-hidden="true">/</span> API v10</span>
+      <a class="nav-btn" href="https://docs.discord.com/developers/reference#api-reference" target="_blank" rel="noopener">API docs <span aria-hidden="true">↗</span></a>
+      <a class="nav-btn" href="https://github.com/The-Unnamed-Official/Discord-API-Search" target="_blank" rel="noopener">Source <span aria-hidden="true">↗</span></a>
     </nav>
+    <div class="quick-actions" aria-label="Quick actions">
+      <button class="round-btn" type="button" id="helpFab" aria-label="Show help" aria-controls="helpPanel" aria-expanded="false" title="Help and keyboard shortcuts (H)">
+        <span aria-hidden="true">?</span>
+      </button>
+      <button class="round-btn" type="button" id="settingsFab" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+        <img class="settings-icon" src="assets/images/settings.svg" width="25" height="25" alt="" aria-hidden="true">
+      </button>
+    </div>
   </header>
 
-  <main class="layout" id="mainContent">
+  <main class="layout" id="mainContent" tabindex="-1">
+    <section class="intro" aria-labelledby="pageHeading">
+      <div>
+        <p class="eyebrow"><span class="intro-dot" aria-hidden="true"></span> A closer look, in a moment</p>
+        <h1 id="pageHeading">Discord, <span>at a glance.</span></h1>
+        <p class="intro-description">Profiles, servers, and the details behind an ID.<br class="desktop-break"> Explore public Discord data in one quiet space.</p>
+      </div>
+      <div class="intro-note"><span aria-hidden="true">❋</span><p>One snowflake.<br>Plenty to discover.</p></div>
+    </section>
     <section class="panel search-panel" aria-labelledby="lookupHeading">
       <div class="panel-heading">
-        <p class="eyebrow">Lookup</p>
-        <h1 id="lookupHeading">Search Discord public data</h1>
+        <p class="eyebrow">Start here</p>
+        <h2 id="lookupHeading">Find an ID</h2>
+        <p class="panel-description">Choose a type, then paste your ID.</p>
       </div>
 
       <div class="mode-tabs" role="tablist" aria-label="Lookup type">
-        <button type="button" class="mode-btn is-active" id="userTab" role="tab" aria-selected="true" aria-controls="searchForm" data-mode="user">
-          <span aria-hidden="true" class="btn-icon">U</span>
+        <button type="button" class="mode-btn is-active" id="userTab" role="tab" aria-selected="true" aria-controls="lookupPanel" data-mode="user">
+          <svg class="control-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg>
           User
         </button>
-        <button type="button" class="mode-btn" id="guildTab" role="tab" aria-selected="false" aria-controls="searchForm" data-mode="guild">
-          <span aria-hidden="true" class="btn-icon">G</span>
-          Guild
+        <button type="button" class="mode-btn" id="guildTab" role="tab" aria-selected="false" aria-controls="lookupPanel" data-mode="guild" tabindex="-1">
+          <svg class="control-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="7" rx="2"/><rect x="4" y="14" width="16" height="7" rx="2"/><path d="M8 6h.01M8 17h.01"/></svg>
+          Server
         </button>
       </div>
 
-      <form id="searchForm" class="search-form" role="search" autocomplete="off">
-        <div class="search-label-row">
-          <label class="search-label" for="searchId">Discord snowflake ID</label>
-          <span class="search-shortcut" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
-        </div>
-        <div class="search-row">
-          <input id="searchId" type="text" inputmode="numeric" spellcheck="false" autocapitalize="off"
-            enterkeyhint="search" maxlength="64" required aria-invalid="false"
-            aria-describedby="lookupHelper inputFeedback" placeholder="Enter a Discord user ID">
-          <button type="submit" class="primary-btn" id="searchButton">
-            <span aria-hidden="true" class="btn-icon">S</span>
-            <span class="button-label">Search</span>
-            <span class="button-loader" aria-hidden="true"></span>
-          </button>
-        </div>
-      </form>
+      <div id="lookupPanel" role="tabpanel" aria-labelledby="userTab">
+        <form id="searchForm" class="search-form" role="search" autocomplete="off">
+          <div class="search-label-row">
+            <label class="search-label" for="searchId">Discord snowflake ID</label>
+            <span class="search-shortcut" aria-hidden="true"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+          </div>
+          <div class="search-row">
+            <input id="searchId" type="text" inputmode="numeric" spellcheck="false" autocapitalize="off"
+              enterkeyhint="search" maxlength="128" required aria-invalid="false" aria-keyshortcuts="Control+k Meta+k /"
+              aria-describedby="lookupHelper inputFeedback" placeholder="Enter a Discord user ID">
+            <button type="submit" class="primary-btn" id="searchButton">
+              <svg class="control-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+              <span class="button-label">Look up ID</span>
+              <span class="button-loader" aria-hidden="true"></span>
+            </button>
+          </div>
+        </form>
 
-      <div class="helper-stack">
-        <p id="lookupHelper">Paste a user snowflake. URLs and mentions are cleaned automatically.</p>
-        <p class="input-feedback" id="inputFeedback" aria-live="polite"></p>
-        <div class="utility-row">
-          <button type="button" class="ghost-btn" data-action="clear-input" disabled>Clear</button>
-          <button type="button" class="ghost-btn" data-action="use-example">Try example</button>
+        <div class="helper-stack">
+          <p id="lookupHelper">Paste a user snowflake. URLs and mentions are cleaned automatically.</p>
+          <p class="input-feedback" id="inputFeedback" aria-live="polite"></p>
+          <div class="utility-row">
+            <button type="button" class="ghost-btn" data-action="clear-input" disabled>Clear</button>
+            <button type="button" class="ghost-btn" data-action="use-example">Try example</button>
+          </div>
         </div>
       </div>
 
@@ -107,16 +125,17 @@
     <section id="resultCard" class="panel result-panel empty" aria-live="polite" aria-busy="false" tabindex="-1">
       <div class="empty-state">
         <span class="empty-glyph" aria-hidden="true">ID</span>
-        <h2>Ready for a lookup</h2>
-        <p>Search a user or guild ID to inspect public Discord API data, CDN resources, badges, and snowflake dates.</p>
+        <p class="eyebrow">Your next discovery</p>
+        <h2>A little more behind every ID.</h2>
+        <p>Look up a user or server to bring its public profile, badges, and creation date into view.</p>
         <button type="button" class="ghost-btn" data-action="use-example">Try the example</button>
       </div>
     </section>
 
-    <aside class="panel help-panel" id="helpPanel" aria-labelledby="helpHeading">
+    <aside class="panel help-panel is-collapsed" id="helpPanel" aria-labelledby="helpHeading" aria-hidden="true" inert>
       <div class="panel-heading compact">
         <p class="eyebrow">Help</p>
-        <h2 id="helpHeading">Status, shortcuts, and fixes</h2>
+        <h2 id="helpHeading">Good to know</h2>
       </div>
 
       <div class="help-grid">
@@ -158,18 +177,11 @@
         <span><kbd>T</kbd> Theme</span>
         <span><kbd>R</kbd> Motion</span>
         <span><kbd>H</kbd> Help</span>
+        <span><kbd>S</kbd> Settings</span>
+        <span><kbd>Esc</kbd> Close panel</span>
       </div>
     </aside>
   </main>
-
-  <div class="floating-actions" aria-label="Quick actions">
-    <button class="round-btn" type="button" id="helpFab" aria-label="Hide help" aria-controls="helpPanel" aria-expanded="true" title="Toggle help">
-      <span aria-hidden="true">?</span>
-    </button>
-    <button class="round-btn" type="button" id="settingsFab" aria-label="Open settings" aria-haspopup="dialog" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
-      <img class="settings-icon" src="resources/1722-gear.svg" alt="" aria-hidden="true">
-    </button>
-  </div>
 
   <section class="settings-panel" id="settingsPanel" role="dialog" aria-modal="false" aria-labelledby="settingsHeading" aria-describedby="settingsDescription" aria-hidden="true" inert>
     <div class="settings-heading-row">
@@ -199,6 +211,11 @@
       <input type="checkbox" id="badgeLabelToggle">
       <span class="switch-ui" aria-hidden="true"></span>
     </label>
+    <label class="switch-row" for="pointerEffectsToggle">
+      <span>Pointer glow &amp; reactions</span>
+      <input type="checkbox" id="pointerEffectsToggle">
+      <span class="switch-ui" aria-hidden="true"></span>
+    </label>
   </section>
 
   <section class="captcha-layer" id="captchaDialog" role="dialog" aria-modal="true"
@@ -215,18 +232,21 @@
       <p id="captchaDescription">Complete this Cloudflare security check before searching. Verification lasts for a short session, then is required again.</p>
       <div class="turnstile-widget" id="turnstileWidget" aria-label="Human verification challenge"></div>
       <p class="captcha-feedback" id="captchaFeedback" role="status" aria-live="polite"></p>
+      <button type="button" class="ghost-btn" data-action="retry-captcha" hidden>Retry verification</button>
     </div>
   </section>
 
   <div id="statusLive" class="status-live" role="status" aria-live="polite"></div>
 
   <footer class="footer">
-    <span>Discord API Search v1.2</span>
+    <span>Discord ID Hub <strong>v1.5</strong> · Unofficial, independent.</span>
     <span>Made by <a href="https://discord.com/users/611204110955446301" target="_blank" rel="noopener noreferrer">The Unnamed</a></span>
     <span>Discord assets and branding belong to Discord Inc.</span>
   </footer>
 
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
-  <script src="script.js"></script>
+  <noscript><p class="noscript-message">JavaScript is needed to look up IDs. Enable it, then reload this page.</p></noscript>
+  <script defer src="assets/js/effects.js?v=1.5.0"></script>
+  <script defer src="assets/js/media.js?v=1.5.0"></script>
+  <script defer src="assets/js/app.js?v=1.5.0"></script>
 </body>
 </html>
