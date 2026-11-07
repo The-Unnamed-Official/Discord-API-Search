@@ -1,5 +1,5 @@
 const DISCORD_API_VERSION = 10;
-const APP_VERSION = '1.2';
+const APP_VERSION = '1.5';
 const PROJECT_URL = 'https://github.com/The-Unnamed-Official/Discord-API-Search';
 const DEFAULT_ORIGIN = 'https://discord-id-hub.info';
 const TURNSTILE_ACTION = 'discord_lookup';
@@ -63,8 +63,10 @@ export default {
     const route = userMatch ? `users/${id}` : `guilds/${id}`;
     const query = guildMatch ? '?with_counts=true' : '';
 
+    const deadline = upstreamDeadline(request);
     try {
       const upstream = await fetch(`https://discord.com/api/v${DISCORD_API_VERSION}/${route}${query}`, {
+        signal: deadline.signal,
         headers: {
           Authorization: `Bot ${env.BOT_TOKEN}`,
           'User-Agent': `DiscordBot (${PROJECT_URL}, ${APP_VERSION})`
@@ -79,9 +81,26 @@ export default {
       return new Response(body, { status: upstream.status, headers });
     } catch {
       return json(request, env, { error: 'Discord upstream request failed.' }, 502);
+    } finally {
+      deadline.dispose();
     }
   }
 };
+
+function upstreamDeadline(request) {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (request.signal?.aborted) cancel();
+  else request.signal?.addEventListener('abort', cancel, { once: true });
+  const timer = setTimeout(cancel, 10000);
+  return {
+    signal: controller.signal,
+    dispose() {
+      clearTimeout(timer);
+      request.signal?.removeEventListener('abort', cancel);
+    }
+  };
+}
 
 async function verifyCaptcha(request, env) {
   if (!captchaConfigured(env)) {
@@ -95,7 +114,7 @@ async function verifyCaptcha(request, env) {
     return json(request, env, { message: 'Invalid verification request.' }, 400);
   }
 
-  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  const token = typeof body?.token === 'string' ? body.token.trim() : '';
   if (!token || token.length > 2048) {
     return json(request, env, { message: 'A valid Turnstile response is required.' }, 400);
   }
@@ -107,23 +126,28 @@ async function verifyCaptcha(request, env) {
   if (clientIp) form.set('remoteip', clientIp);
 
   let validation;
+  const deadline = upstreamDeadline(request);
   try {
     const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
-      body: form
+      body: form,
+      signal: deadline.signal
     });
+    if (!response.ok) throw new Error('Siteverify unavailable.');
     validation = await response.json();
   } catch {
     return json(request, env, { message: 'Verification service is temporarily unavailable.' }, 502);
+  } finally {
+    deadline.dispose();
   }
 
   const allowedHostnames = getAllowedTurnstileHostnames(env);
-  const hostnameAllowed = typeof validation.hostname === 'string' &&
+  const hostnameAllowed = typeof validation?.hostname === 'string' &&
     allowedHostnames.includes(validation.hostname.toLowerCase());
-  if (!validation.success || validation.action !== TURNSTILE_ACTION || !hostnameAllowed) {
+  if (!validation?.success || validation.action !== TURNSTILE_ACTION || !hostnameAllowed) {
     return json(request, env, {
       message: 'Verification was not accepted. Please try again.',
-      error_codes: validation['error-codes'] || []
+      error_codes: validation?.['error-codes'] || []
     }, 403);
   }
 
