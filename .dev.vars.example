@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local Wrangler use and replace every placeholder.
+# Keep actual credentials out of tracked files.
+BOT_TOKEN="replace-with-local-discord-bot-token"
+TURNSTILE_SITE_KEY="replace-with-local-turnstile-site-key"
+TURNSTILE_SECRET_KEY="replace-with-local-turnstile-secret-key"
+CAPTCHA_SESSION_SECRET="replace-with-a-random-secret-at-least-32-characters"
+ALLOWED_ORIGINS="http://localhost:8000"
+TURNSTILE_ALLOWED_HOSTNAMES="localhost"
+CAPTCHA_SESSION_MINUTES="15"

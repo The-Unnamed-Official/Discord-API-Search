@@ -1,0 +1,13 @@
+{
+  "name": "discord-id-hub",
+  "version": "1.5.0",
+  "private": true,
+  "description": "Static Discord snowflake lookup with a Cloudflare Worker proxy.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node --check assets/js/app.js && node --check assets/js/effects.js && node --check assets/js/media.js && node --check worker.js"
+  }
+}
