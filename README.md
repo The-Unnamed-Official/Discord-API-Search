@@ -31,7 +31,7 @@ wrangler.toml        Cloudflare Worker deployment configuration
 
 ## Local development
 
-Serve the repository over HTTP using a static server and open `index.html`. There is no install or frontend build step. JavaScript modules and Turnstile require HTTP rather than `file://`.
+Open `index.html` directly to use the interface, settings, and keyboard controls. The browser scripts use ordered, deferred loading and do not require JavaScript modules or a build step. Serve the repository over HTTP for API lookups: Turnstile requires a configured HTTP(S) hostname and the Worker must allow the page's origin.
 
 The frontend `API_BASE` is in `assets/js/app.js`. For local Worker development, copy `.dev.vars.example` to `.dev.vars`, replace its placeholders, and run `npx wrangler dev`. Point the local frontend at that Worker's `/api` URL. Add the local frontend origin to `ALLOWED_ORIGINS` and its hostname to the Turnstile widget. Restore the production `API_BASE` before deployment.
 

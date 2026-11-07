@@ -1,5 +1,8 @@
+(() => {
+'use strict';
+
 // Pause decorative media outside the viewport and whenever the page is hidden.
-export function createMediaController(getSettings) {
+function createMediaController(getSettings) {
   const elements = new Map();
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const connection = navigator.connection;
@@ -60,3 +63,7 @@ export function createMediaController(getSettings) {
   connection?.addEventListener('change', sync);
   return { bind, sync };
 }
+
+window.DiscordIDHub = window.DiscordIDHub || {};
+window.DiscordIDHub.createMediaController = createMediaController;
+})();

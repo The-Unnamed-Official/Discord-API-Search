@@ -1,6 +1,7 @@
-import { createEffects } from './effects.js';
-import { createMediaController } from './media.js';
+(() => {
+'use strict';
 
+const { createEffects, createMediaController } = window.DiscordIDHub || {};
 const APP_VERSION = 'v1.5';
 const DISCORD_API_VERSION = 10;
 const DISCORD_EPOCH = 1420070400000n;
@@ -1819,6 +1820,21 @@ async function runSearch({ moveFocus = false } = {}) {
   input.value = id;
   syncSearchControls();
 
+  if (window.location.protocol === 'file:') {
+    const online = new URL('https://discord-id-hub.info/');
+    online.searchParams.set('type', mode);
+    online.searchParams.set('id', id);
+    setResult(`<div class="empty-state">
+      <span class="empty-glyph" aria-hidden="true">ID</span>
+      <h2>Continue with the online lookup</h2>
+      <p>This page was opened as a local file. Protected lookups need HTTP(S); continue on the live site to search this ID.</p>
+      <a class="primary-btn" href="${escapeAttr(online.href)}" target="_blank" rel="noopener">Look up this ID online</a>
+    </div>`, 'empty');
+    revealResult(moveFocus);
+    announce('Local controls are available. Use the online lookup to search this ID.', 'info');
+    return;
+  }
+
   if (!getCaptchaSessionToken()) {
     if (state.abortController) state.abortController.abort();
     state.abortController = null;
@@ -2295,14 +2311,22 @@ function bindEvents() {
 
 function init() {
   document.title = `Discord ID Hub ${APP_VERSION}`;
+  bindEvents();
   loadSettings();
   loadRecentSearches();
   loadCaptchaSession();
-  bindEvents();
-  media = createMediaController(() => state.settings);
-  effects = createEffects(() => state.settings);
-  window.addEventListener('pagehide', () => effects.suspend(true));
-  window.addEventListener('pageshow', () => effects.suspend(false));
+  try {
+    if (typeof createMediaController === 'function') media = createMediaController(() => state.settings);
+  } catch (error) {
+    console.warn('Animated media is unavailable; lookup controls remain active.', error);
+  }
+  try {
+    if (typeof createEffects === 'function') effects = createEffects(() => state.settings);
+  } catch (error) {
+    console.warn('Pointer effects are unavailable; lookup controls remain active.', error);
+  }
+  window.addEventListener('pagehide', () => effects?.suspend(true));
+  window.addEventListener('pageshow', () => effects?.suspend(false));
   const sharedLookup = readLookupUrl();
   if (sharedLookup) {
     setMode(sharedLookup.mode, true, false);
@@ -2317,3 +2341,4 @@ function init() {
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true });
 else init();
+})();

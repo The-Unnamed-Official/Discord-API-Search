@@ -1,3 +1,6 @@
+(() => {
+'use strict';
+
 // A single, event-driven clock for pointer lighting and avatar motion.
 const RADIUS = 220;
 const FRAME_INTERVAL = 1000 / 60;
@@ -9,7 +12,7 @@ const SELECTOR = [
 const EXCLUDED = '[hidden], [inert], [aria-hidden="true"], #helpPanel, #settingsPanel, #captchaDialog';
 const smooth = value => { const n = Math.max(0, Math.min(1, value)); return n * n * (3 - 2 * n); };
 
-export function createEffects(getSettings) {
+function createEffects(getSettings) {
   const finePointer = matchMedia('(any-hover: hover) and (any-pointer: fine)');
   const forcedColors = matchMedia('(forced-colors: active)');
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
@@ -311,3 +314,7 @@ export function createEffects(getSettings) {
     }
   };
 }
+
+window.DiscordIDHub = window.DiscordIDHub || {};
+window.DiscordIDHub.createEffects = createEffects;
+})();
